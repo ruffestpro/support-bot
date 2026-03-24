@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir --retries 25 --timeout 600 \
     --trusted-host mirrors.aliyun.com \
     --trusted-host pypi.tuna.tsinghua.edu.cn \
     -i "${PIP_INDEX_URL}" \
-    "setuptools>=69.0.0,<82.0.0" && \
+    "setuptools>=69.0.0,<81.0.0" && \
     python -c "import pkg_resources; print('pkg_resources: ok')"
 
 COPY . .

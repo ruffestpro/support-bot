@@ -8,4 +8,4 @@ environs==14.1.1
 pydantic==2.5.3
 redis==5.0.1
 # APScheduler 3.10 тянет pkg_resources; в python:*-slim setuptools нет по умолчанию
-setuptools>=69.0.0
+setuptools>=69.0.0,<82.0.0

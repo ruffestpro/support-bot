@@ -3,7 +3,8 @@ from typing import Any, Awaitable, Callable, Dict, MutableMapping, Optional
 
 from aiogram import BaseMiddleware
 from aiogram.dispatcher.flags import get_flag
-from aiogram.types import TelegramObject, User
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Message, TelegramObject, User
 from cachetools import TTLCache
 
 
@@ -54,9 +55,10 @@ class ThrottlingMiddleware(BaseMiddleware):
             throttling_key = get_flag(data, "throttling_key", default=self.default_key)
             # Check if the user is already throttled for the given key
             if throttling_key and user.id in self.caches[throttling_key]:
-                # Delete the message if it exists
-                with suppress(Exception):
-                    await event.message.delete()
+                msg = getattr(event, "message", None)
+                if isinstance(msg, Message):
+                    with suppress(TelegramBadRequest):
+                        await msg.delete()
                 return None
 
             # Add the user to the cache to indicate throttling

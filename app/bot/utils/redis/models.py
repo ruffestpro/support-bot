@@ -1,5 +1,10 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone, timedelta
+
+
+def _default_created_at() -> str:
+    """Время создания записи на момент создания объекта (не при импорте модуля)."""
+    return datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
 @dataclass
@@ -15,7 +20,7 @@ class UserData:
     state: str = "member"
     is_banned: bool = False
     language_code: str | None = None
-    created_at: str = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S %Z")
+    created_at: str = field(default_factory=_default_created_at)
 
     def to_dict(self) -> dict:
         """

@@ -16,20 +16,19 @@ async def get_or_create_forum_topic(
         config: Config,
         user_data: UserData,
 ) -> int:
-    if user_data.message_thread_id is None:
-        try:
-            # If message_thread_id is not found, create a forum topic
-            message_thread_id = await create_forum_topic(
-                bot, config, user_data.full_name,
-            )
-            user_data.message_thread_id = message_thread_id
-            await redis.update_user(user_data.id, user_data)
+    """
+    Возвращает ID ветки форума. Не глотает ошибки: при неудаче создания топика
+    исключение пробрасывается (см. обработчики в handlers/errors.py).
+    """
+    if user_data.message_thread_id is not None:
+        return user_data.message_thread_id
 
-        except Exception as e:
-            await bot.send_message(config.bot.DEV_ID, str(e))
-            logging.exception(e)
-
-    return user_data.message_thread_id
+    message_thread_id = await create_forum_topic(
+        bot, config, user_data.full_name,
+    )
+    user_data.message_thread_id = message_thread_id
+    await redis.update_user(user_data.id, user_data)
+    return message_thread_id
 
 
 async def create_forum_topic(bot: Bot, config: Config, name: str) -> int:
@@ -71,7 +70,3 @@ async def create_forum_topic(bot: Bot, config: Config, name: str) -> int:
 
         # Raise a generic exception for other cases
         raise CreateForumTopicException
-
-    except Exception as ex:
-        # Re-raise any other exceptions
-        raise ex

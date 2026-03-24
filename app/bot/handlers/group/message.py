@@ -81,11 +81,11 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
             await album.copy_to(chat_id=user_data.id)
 
     except TelegramAPIError as ex:
-        if "blocked" in ex.message:
+        lowered = (ex.message or "").lower()
+        if "blocked" in lowered:
             text = manager.text_message.get("blocked_by_user")
-
-    except (Exception,):
-        text = manager.text_message.get("message_not_sent")
+        else:
+            text = manager.text_message.get("message_not_sent")
 
     # Reply to the edited message with the specified text
     msg = await message.reply(text)

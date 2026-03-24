@@ -7,15 +7,13 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DEFAULT_TIMEOUT=180 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# На проде с плохим маршрутом до pypi.org: docker compose build --build-arg PIP_INDEX_URL=https://...
-ARG PIP_INDEX_URL=https://pypi.org/simple
-# Для зеркала по HTTP добавьте --trusted-host вручную или используйте HTTPS-зеркало
-ENV PIP_INDEX_URL=${PIP_INDEX_URL}
-
 COPY requirements.txt .
 
+# ARG после COPY: индекс PyPI только на этапе pip (без ENV — меньше путаницы со сборщиками)
+# Сборка: docker compose build --build-arg PIP_INDEX_URL=https://...
+ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN pip install --no-cache-dir --retries 15 --timeout 180 \
-    -i "${PIP_INDEX_URL}" \
+    -i "$PIP_INDEX_URL" \
     -r requirements.txt
 
 COPY . .

@@ -70,7 +70,7 @@ docker compose up --build -d
 | `REDIS_DB` | int | Redis logical database index | `0` |
 | `GROQ_API_KEY` | str | [Groq](https://console.groq.com) API key; empty = no AI | `gsk_...` |
 | `GROQ_ENABLED` | bool | `false` disables AI even if the key is set | `true` |
-| `GROQ_MODEL` | str | Groq chat model id | `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | str | Groq chat model id | `llama-3.1-8b-instant` (или `llama-3.3-70b-versatile`) |
 
 Notes:
 

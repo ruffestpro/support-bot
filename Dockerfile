@@ -4,16 +4,19 @@ WORKDIR /usr/src/app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_DEFAULT_TIMEOUT=180 \
+    PIP_DEFAULT_TIMEOUT=600 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 COPY requirements.txt .
 
-# ARG после COPY: индекс PyPI только на этапе pip (без ENV — меньше путаницы со сборщиками)
-# Сборка: docker compose build --build-arg PIP_INDEX_URL=https://...
+# Индекс: в compose по умолчанию зеркало (см. docker-compose), иначе часто таймауты до files.pythonhosted.org
 ARG PIP_INDEX_URL=https://pypi.org/simple
-RUN pip install --no-cache-dir --retries 15 --timeout 180 \
-    -i "$PIP_INDEX_URL" \
+RUN pip install --no-cache-dir --retries 25 --timeout 600 \
+    --trusted-host pypi.org \
+    --trusted-host files.pythonhosted.org \
+    --trusted-host mirrors.aliyun.com \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+    -i "${PIP_INDEX_URL}" \
     -r requirements.txt
 
 COPY . .

@@ -6,7 +6,9 @@ services:
       # На Linux: сборка в сети хоста часто убирает таймауты NAT/DNS до PyPI
       network: host
       args:
-        PIP_INDEX_URL: https://pypi.org/simple
+        # Зеркало отдаёт whl со своего CDN — меньше обрывов до files.pythonhosted.org (РФ/Азия)
+        # Вернуть официальный индекс: https://pypi.org/simple
+        PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     env_file:
       - .env
     container_name: support-bot

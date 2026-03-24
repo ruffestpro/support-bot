@@ -33,10 +33,12 @@ class GroqConfig:
     """Опциональная интеграция Groq (OpenAI-совместимый API)."""
     API_KEY: str
     MODEL: str
+    # Мастер-выключатель: GROQ_ENABLED=false — не вызывать ИИ даже при наличии ключа
+    ENABLED: bool
 
     @property
     def enabled(self) -> bool:
-        return bool(self.API_KEY and self.API_KEY.strip())
+        return self.ENABLED and bool(self.API_KEY and self.API_KEY.strip())
 
 
 @dataclass
@@ -101,5 +103,6 @@ def load_config() -> Config:
         groq=GroqConfig(
             API_KEY=_strip_env_secret(env.str("GROQ_API_KEY", default="")),
             MODEL=env.str("GROQ_MODEL", default="llama-3.1-8b-instant").strip(),
+            ENABLED=env.bool("GROQ_ENABLED", default=True),
         ),
     )

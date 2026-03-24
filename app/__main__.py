@@ -63,6 +63,8 @@ async def on_startup(
                 "Groq: ключ не начинается с gsk_ — проверь GROQ_API_KEY (кавычки, пробелы, не тот токен)."
             )
         _log.info("Groq: включён, модель %s", config.groq.MODEL)
+    elif not config.groq.ENABLED:
+        _log.info("Groq: выключен (GROQ_ENABLED=false)")
 
 
 async def main() -> None:

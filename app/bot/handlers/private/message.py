@@ -117,11 +117,15 @@ async def handle_incoming_message(
         and not album
         and message.text
     ):
+        history = await redis.groq_get_history(user_data.id)
         ai_text = await groq_chat_completion(
             manager.config.groq,
             message.text,
+            history=history,
         )
+        await redis.groq_append_turn(user_data.id, "user", message.text)
         if ai_text:
+            await redis.groq_append_turn(user_data.id, "assistant", ai_text)
             try:
                 await message.answer(
                     groq_reply_for_telegram_html(ai_text),

@@ -9,6 +9,9 @@ class RedisStorage:
     """Class for managing user data storage using Redis."""
 
     NAME = "users"
+    GROQ_CTX_PREFIX = "groq_ctx"
+    GROQ_CTX_MAX_ITEMS = 48
+    GROQ_CTX_TTL_SEC = 60 * 60 * 24 * 14
 
     def __init__(self, redis: Redis) -> None:
         """
@@ -105,3 +108,43 @@ class RedisStorage:
         async with self.redis.client() as client:
             user_ids = await client.hkeys(self.NAME)
             return [int(user_id) for user_id in user_ids]
+
+    def _groq_ctx_key(self, user_id: int) -> str:
+        return f"{self.GROQ_CTX_PREFIX}:{user_id}"
+
+    async def groq_append_turn(self, user_id: int, role: str, content: str) -> None:
+        """
+        Добавляет реплику в историю для Groq (порядок хронологический).
+        role: "user" | "assistant" (assistant = ответ ИИ или оператора в топике).
+        """
+        text = (content or "").strip()
+        if not text:
+            return
+        if len(text) > 12000:
+            text = text[:12000] + "…"
+        if role not in ("user", "assistant"):
+            role = "user"
+        payload = json.dumps({"role": role, "content": text}, ensure_ascii=False)
+        key = self._groq_ctx_key(user_id)
+        async with self.redis.client() as client:
+            await client.rpush(key, payload)
+            await client.ltrim(key, -self.GROQ_CTX_MAX_ITEMS, -1)
+            await client.expire(key, self.GROQ_CTX_TTL_SEC)
+
+    async def groq_get_history(self, user_id: int) -> list[dict]:
+        """Сообщения для chat completions (без текущего запроса пользователя)."""
+        key = self._groq_ctx_key(user_id)
+        async with self.redis.client() as client:
+            raw = await client.lrange(key, 0, -1)
+        out: list[dict] = []
+        for item in raw:
+            try:
+                obj = json.loads(item)
+                if isinstance(obj, dict) and obj.get("content") and obj.get("role") in (
+                    "user",
+                    "assistant",
+                ):
+                    out.append({"role": obj["role"], "content": str(obj["content"])})
+            except (json.JSONDecodeError, TypeError, KeyError):
+                continue
+        return out

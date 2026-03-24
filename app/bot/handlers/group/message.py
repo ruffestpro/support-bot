@@ -79,13 +79,22 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
             await message.copy_to(chat_id=user_data.id)
         else:
             await album.copy_to(chat_id=user_data.id)
-
     except TelegramAPIError as ex:
         lowered = (ex.message or "").lower()
         if "blocked" in lowered:
             text = manager.text_message.get("blocked_by_user")
         else:
             text = manager.text_message.get("message_not_sent")
+    else:
+        # История для Groq: текст ответа оператора из топика (без альбомов)
+        if manager.config.groq.enabled and not album:
+            staff_text = message.text or message.caption
+            if staff_text and staff_text.strip():
+                await redis.groq_append_turn(
+                    user_data.id,
+                    "assistant",
+                    f"[Поддержка (оператор)]: {staff_text.strip()}",
+                )
 
     # Reply to the edited message with the specified text
     msg = await message.reply(text)

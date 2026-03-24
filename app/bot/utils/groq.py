@@ -11,11 +11,16 @@ from app.config import GroqConfig
 logger = logging.getLogger(__name__)
 
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+# Сколько последних реплик (user+assistant) передавать в API
+GROQ_MAX_HISTORY_MESSAGES = 24
+
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a concise first-line support assistant for a Telegram help bot. "
     "Reply in the same language as the user (Russian or English). "
     "Give short, practical steps when possible. "
+    "Messages in the conversation prefixed with [Поддержка (оператор)] are real replies from human staff "
+    "in the support group; stay consistent with them and do not contradict them. "
     "If the question needs account access, payments, or policies you do not know, "
     "say that a human operator will review the ticket and the user should wait. "
     "Do not invent company policies, prices, or guarantees."
@@ -26,21 +31,25 @@ async def groq_chat_completion(
     groq: GroqConfig,
     user_message: str,
     *,
+    history: list[dict] | None = None,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     timeout: float = 45.0,
 ) -> str | None:
     """
     Возвращает текст ответа модели или None при ошибке/пустом ответе.
+    history — прошлые реплики из Redis (ответы оператора из топика + прошлые реплики ИИ).
     """
     if not groq.enabled:
         return None
 
+    past = (history or [])[-GROQ_MAX_HISTORY_MESSAGES:]
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    messages.extend(past)
+    messages.append({"role": "user", "content": user_message})
+
     payload = {
         "model": groq.MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
+        "messages": messages,
         "max_tokens": 700,
         "temperature": 0.35,
     }

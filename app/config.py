@@ -21,6 +21,17 @@ class BotConfig:
 
 
 @dataclass
+class GroqConfig:
+    """Опциональная интеграция Groq (OpenAI-совместимый API)."""
+    API_KEY: str
+    MODEL: str
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.API_KEY and self.API_KEY.strip())
+
+
+@dataclass
 class RedisConfig:
     """
     Data class representing the configuration for Redis.
@@ -51,9 +62,11 @@ class Config:
     Attributes:
     - bot (BotConfig): The bot configuration.
     - redis (RedisConfig): The Redis configuration.
+    - groq (GroqConfig): Groq LLM (пустой ключ = выключено).
     """
     bot: BotConfig
     redis: RedisConfig
+    groq: GroqConfig
 
 
 def load_config() -> Config:
@@ -76,5 +89,9 @@ def load_config() -> Config:
             HOST=env.str("REDIS_HOST"),
             PORT=env.int("REDIS_PORT"),
             DB=env.int("REDIS_DB"),
+        ),
+        groq=GroqConfig(
+            API_KEY=env.str("GROQ_API_KEY", default=""),
+            MODEL=env.str("GROQ_MODEL", default="llama-3.1-8b-instant"),
         ),
     )

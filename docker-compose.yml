@@ -3,6 +3,12 @@ services:
   bot:
     build:
       context: .
+      # На Linux: сборка в сети хоста часто убирает таймауты NAT/DNS до PyPI
+      network: host
+      args:
+        PIP_INDEX_URL: https://pypi.org/simple
+    env_file:
+      - .env
     container_name: support-bot
     command: sh -c "cd /usr/src/app && python -m app"
     restart: always

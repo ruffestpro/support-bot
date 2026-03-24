@@ -1,6 +1,8 @@
 import asyncio
+import logging
 
 from aiogram import Router, F
+from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import StateFilter
 from aiogram.types import Message
@@ -11,8 +13,11 @@ from app.bot.utils.create_forum_topic import (
     create_forum_topic,
     get_or_create_forum_topic,
 )
+from app.bot.utils.groq import groq_chat_completion, groq_reply_for_telegram_html
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 router.message.filter(F.chat.type == "private", StateFilter(None))
@@ -106,3 +111,21 @@ async def handle_incoming_message(
     await asyncio.sleep(5)
     # Delete the reply to the edited message
     await msg.delete()
+
+    if (
+        manager.config.groq.enabled
+        and not album
+        and message.text
+    ):
+        ai_text = await groq_chat_completion(
+            manager.config.groq,
+            message.text,
+        )
+        if ai_text:
+            try:
+                await message.answer(
+                    groq_reply_for_telegram_html(ai_text),
+                    parse_mode=ParseMode.HTML,
+                )
+            except TelegramBadRequest:
+                logger.exception("Failed to send Groq reply to user")

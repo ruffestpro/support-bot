@@ -109,6 +109,9 @@ class TextMessage(Text):
                 "silent_mode_disabled": (
                     "<b>Silent mode deactivated!</b> The user will receive all messages."
                 ),
+                "groq_staff_header": (
+                    "🤖 <b>AI reply (Groq) sent to the user in private chat:</b>"
+                ),
             },
             "ru": {
                 "select_language": f"👋 <b>Добро пожаловать, отважный герой</b>, {hbold('{full_name}')}!\n\n🔹 Выберите язык для своей миссии:",
@@ -162,6 +165,9 @@ class TextMessage(Text):
                 ),
                 "silent_mode_disabled": (
                     "🔔 <b>Режим тишины отключён!</b> Все сообщения теперь видимы для пользователя."
+                ),
+                "groq_staff_header": (
+                    "🤖 <b>Ответ ИИ (Groq), отправленный пользователю в ЛС:</b>"
                 ),
             },
         }

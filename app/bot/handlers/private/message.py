@@ -19,6 +19,9 @@ from app.bot.utils.redis.models import UserData
 
 logger = logging.getLogger(__name__)
 
+# Длина текста ответа ИИ до HTML-экранирования (заголовок + запас под лимит 4096)
+_GROQ_STAFF_BODY_MAX = 3400
+
 router = Router()
 router.message.filter(F.chat.type == "private", StateFilter(None))
 
@@ -133,3 +136,20 @@ async def handle_incoming_message(
                 )
             except TelegramBadRequest:
                 logger.exception("Failed to send Groq reply to user")
+            else:
+                # Операторы в топике видят тот же ответ ИИ (в ЛС его видит только пользователь)
+                if user_data.message_thread_id is not None:
+                    header = manager.text_message.get("groq_staff_header")
+                    plain = ai_text
+                    if len(plain) > _GROQ_STAFF_BODY_MAX:
+                        plain = plain[: _GROQ_STAFF_BODY_MAX - 1] + "…"
+                    staff_text = f"{header}\n\n{groq_reply_for_telegram_html(plain)}"
+                    try:
+                        await message.bot.send_message(
+                            chat_id=manager.config.bot.GROUP_ID,
+                            message_thread_id=user_data.message_thread_id,
+                            text=staff_text,
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except TelegramBadRequest:
+                        logger.exception("Failed to mirror Groq reply to support topic")

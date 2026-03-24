@@ -92,9 +92,15 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
 
     format_data = user_data.to_dict()
     format_data["full_name"] = hbold(format_data["full_name"])
-    text = manager.text_message.get("user_information")
-    # Reply with formatted user information
-    await message.reply(text.format_map(format_data))
+    text = manager.text_message.get("user_information").format_map(format_data)
+    main_bot = manager.config.bot.BOT_USERNAME
+    if main_bot:
+        link = manager.text_message.get("user_information_open_link").format(
+            bot_username=main_bot,
+            tg_id=user_data.id,
+        )
+        text = f"{text}\n\n{link}"
+    await message.reply(text)
 
 
 @router.message(Command(commands=["ban"]))

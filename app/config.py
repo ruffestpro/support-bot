@@ -3,6 +3,11 @@ from dataclasses import dataclass
 from environs import Env
 
 
+def _normalize_bot_username(value: str) -> str:
+    """Имя бота для t.me без @."""
+    return (value or "").strip().lstrip("@")
+
+
 def _strip_env_secret(value: str) -> str:
     """Убирает пробелы и обрамляющие кавычки из секретов из .env / Docker env."""
     v = (value or "").strip()
@@ -21,11 +26,13 @@ class BotConfig:
     - DEV_ID (int): The developer's user ID.
     - GROUP_ID (int): The group chat ID.
     - BOT_EMOJI_ID (str): The custom emoji ID for the group's topic.
+    - BOT_USERNAME (str): Юзернейм основного бота (без @) для deep link из /information.
     """
     TOKEN: str
     DEV_ID: int
     GROUP_ID: int
     BOT_EMOJI_ID: str
+    BOT_USERNAME: str
 
 
 @dataclass
@@ -94,6 +101,7 @@ def load_config() -> Config:
             DEV_ID=env.int("BOT_DEV_ID"),
             GROUP_ID=env.int("BOT_GROUP_ID"),
             BOT_EMOJI_ID=env.str("BOT_EMOJI_ID"),
+            BOT_USERNAME=_normalize_bot_username(env.str("BOT_USERNAME", default="")),
         ),
         redis=RedisConfig(
             HOST=env.str("REDIS_HOST"),

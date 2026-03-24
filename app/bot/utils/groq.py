@@ -59,7 +59,14 @@ async def groq_chat_completion(
             ) as response:
                 if response.status >= 400:
                     body = (await response.text())[:500]
-                    logger.warning("Groq HTTP error: %s %s", response.status, body)
+                    if response.status == 403:
+                        logger.warning(
+                            "Groq 403 Forbidden: неверный/отозванный ключ, лишние символы в GROQ_API_KEY, "
+                            "или ограничение доступа (см. console.groq.com). Ответ: %s",
+                            body,
+                        )
+                    else:
+                        logger.warning("Groq HTTP error: %s %s", response.status, body)
                     return None
                 data = await response.json()
     except aiohttp.ClientError as e:

@@ -3,6 +3,14 @@ from dataclasses import dataclass
 from environs import Env
 
 
+def _strip_env_secret(value: str) -> str:
+    """Убирает пробелы и обрамляющие кавычки из секретов из .env / Docker env."""
+    v = (value or "").strip()
+    if len(v) >= 2 and v[0] in "\"'" and v[0] == v[-1]:
+        v = v[1:-1].strip()
+    return v
+
+
 @dataclass
 class BotConfig:
     """
@@ -91,7 +99,7 @@ def load_config() -> Config:
             DB=env.int("REDIS_DB"),
         ),
         groq=GroqConfig(
-            API_KEY=env.str("GROQ_API_KEY", default=""),
-            MODEL=env.str("GROQ_MODEL", default="llama-3.1-8b-instant"),
+            API_KEY=_strip_env_secret(env.str("GROQ_API_KEY", default="")),
+            MODEL=env.str("GROQ_MODEL", default="llama-3.1-8b-instant").strip(),
         ),
     )

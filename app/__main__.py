@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -12,6 +13,8 @@ from .bot.handlers import include_routers
 from .bot.middlewares import register_middlewares
 from .config import load_config, Config
 from .logger import setup_logger
+
+_log = logging.getLogger(__name__)
 
 
 async def on_shutdown(
@@ -53,6 +56,13 @@ async def on_startup(
     apscheduler.start()
     # Setup commands when starting up
     await commands.setup(bot, config)
+
+    if config.groq.enabled:
+        if not config.groq.API_KEY.startswith("gsk_"):
+            _log.warning(
+                "Groq: ключ не начинается с gsk_ — проверь GROQ_API_KEY (кавычки, пробелы, не тот токен)."
+            )
+        _log.info("Groq: включён, модель %s", config.groq.MODEL)
 
 
 async def main() -> None:

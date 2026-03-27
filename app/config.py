@@ -42,6 +42,8 @@ class GroqConfig:
     MODEL: str
     # Мастер-выключатель: GROQ_ENABLED=false — не вызывать ИИ даже при наличии ключа
     ENABLED: bool
+    # После сообщения оператора в топике ИИ молчит столько секунд; затем снова может отвечать в том же топике
+    OPERATOR_LOCK_SEC: int
 
     @property
     def enabled(self) -> bool:
@@ -112,5 +114,9 @@ def load_config() -> Config:
             API_KEY=_strip_env_secret(env.str("GROQ_API_KEY", default="")),
             MODEL=env.str("GROQ_MODEL", default="llama-3.1-8b-instant").strip(),
             ENABLED=env.bool("GROQ_ENABLED", default=True),
+            OPERATOR_LOCK_SEC=max(
+                3600,
+                env.int("GROQ_OPERATOR_LOCK_SEC", default=3600),
+            ),
         ),
     )

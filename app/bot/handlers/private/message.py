@@ -119,6 +119,7 @@ async def handle_incoming_message(
         manager.config.groq.enabled
         and not album
         and message.text
+        and not await redis.groq_is_operator_engaged(user_data.id)
     ):
         history = await redis.groq_get_history(user_data.id)
         ai_text = await groq_chat_completion(

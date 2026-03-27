@@ -15,15 +15,18 @@ class RedisMiddleware(BaseMiddleware):
 
     Args:
         redis (Redis): The Redis instance for data storage.
+        groq_operator_lock_sec: TTL блокировки ИИ после сообщения оператора (из config).
     """
 
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis, groq_operator_lock_sec: int = 3600) -> None:
         """
         Initializes the RedisMiddleware instance.
 
         :param redis: The Redis instance for data storage.
+        :param groq_operator_lock_sec: Секунды, на которые ставится ключ после ответа оператора.
         """
         self.redis = redis
+        self._groq_operator_lock_sec = groq_operator_lock_sec
 
     async def __call__(
             self,
@@ -40,7 +43,10 @@ class RedisMiddleware(BaseMiddleware):
         :return: The result of the handler function.
         """
         # Create an instance of RedisStorage using the provided Redis instance
-        redis = RedisStorage(self.redis)
+        redis = RedisStorage(
+            self.redis,
+            groq_operator_lock_sec=self._groq_operator_lock_sec,
+        )
 
         # Extract the chat and user objects from data
         chat: Chat = data.get("event_chat")

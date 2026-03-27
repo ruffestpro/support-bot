@@ -10,6 +10,7 @@ from aiogram.utils.markdown import hlink
 from app.bot.manager import Manager
 from app.bot.types.album import Album
 from app.bot.utils.redis import RedisStorage
+from app.bot.utils.redis.redis import GROQ_OPERATOR_CONTENT_PREFIX
 
 router = Router()
 router.message.filter(
@@ -93,8 +94,9 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
                 await redis.groq_append_turn(
                     user_data.id,
                     "assistant",
-                    f"[Поддержка (оператор)]: {staff_text.strip()}",
+                    f"{GROQ_OPERATOR_CONTENT_PREFIX}: {staff_text.strip()}",
                 )
+                await redis.groq_mark_operator_engaged(user_data.id)
 
     # Reply to the edited message with the specified text
     msg = await message.reply(text)

@@ -19,7 +19,13 @@ def register_middlewares(dp: Dispatcher, **kwargs) -> None:
         None
     """
     # Register RedisMiddleware with the provided Redis instance
-    dp.update.outer_middleware.register(RedisMiddleware(kwargs["redis"]))
+    cfg = kwargs["config"]
+    dp.update.outer_middleware.register(
+        RedisMiddleware(
+            kwargs["redis"],
+            groq_operator_lock_sec=cfg.groq.OPERATOR_LOCK_SEC,
+        ),
+    )
     # Register ManagerMiddleware
     dp.update.outer_middleware.register(ManagerMiddleware())
 

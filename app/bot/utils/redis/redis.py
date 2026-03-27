@@ -5,21 +5,27 @@ from redis.asyncio import Redis
 from .models import UserData
 
 
+GROQ_OPERATOR_CONTENT_PREFIX = "[Поддержка (оператор)]"
+
+
 class RedisStorage:
     """Class for managing user data storage using Redis."""
 
     NAME = "users"
     GROQ_CTX_PREFIX = "groq_ctx"
+    GROQ_OP_PREFIX = "groq_op"
     GROQ_CTX_MAX_ITEMS = 48
     GROQ_CTX_TTL_SEC = 60 * 60 * 24 * 14
 
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis, groq_operator_lock_sec: int = 3600) -> None:
         """
         Initializes the RedisStorage instance.
 
         :param redis: The Redis instance to be used for data storage.
+        :param groq_operator_lock_sec: TTL ключа блокировки ИИ после сообщения оператора.
         """
         self.redis = redis
+        self._groq_operator_lock_sec = groq_operator_lock_sec
 
     async def _get(self, name: str, key: str | int) -> bytes | None:
         """
@@ -111,6 +117,24 @@ class RedisStorage:
 
     def _groq_ctx_key(self, user_id: int) -> str:
         return f"{self.GROQ_CTX_PREFIX}:{user_id}"
+
+    def _groq_op_key(self, user_id: int) -> str:
+        return f"{self.GROQ_OP_PREFIX}:{user_id}"
+
+    async def groq_mark_operator_engaged(self, user_id: int) -> None:
+        """
+        Оператор написал в топике — ИИ не отвечает в ЛС до истечения TTL (тот же топик,
+        затем ИИ снова может отвечать на новые сообщения пользователя).
+        """
+        key = self._groq_op_key(user_id)
+        async with self.redis.client() as client:
+            await client.set(key, "1", ex=self._groq_operator_lock_sec)
+
+    async def groq_is_operator_engaged(self, user_id: int) -> bool:
+        """True, пока активен ключ после последнего сообщения оператора (см. groq_mark_operator_engaged)."""
+        key = self._groq_op_key(user_id)
+        async with self.redis.client() as client:
+            return bool(await client.get(key))
 
     async def groq_append_turn(self, user_id: int, role: str, content: str) -> None:
         """

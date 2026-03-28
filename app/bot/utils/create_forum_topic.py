@@ -10,6 +10,23 @@ from .redis import RedisStorage
 from .redis.models import UserData
 
 
+def is_forum_thread_stale_or_invalid_error(telegram_message: str | None) -> bool:
+    """
+    Ошибки Telegram при удалённом/недоступном треде форума (текст API может отличаться).
+    """
+    m = (telegram_message or "").lower()
+    markers = (
+        "message thread not found",
+        "thread not found",
+        "message thread id invalid",
+        "message thread id is invalid",
+        "bad message thread",
+        "topic was deleted",
+        "topic is closed",
+    )
+    return any(x in m for x in markers)
+
+
 async def get_or_create_forum_topic(
         bot: Bot,
         redis: RedisStorage,

@@ -12,6 +12,12 @@ from app.bot.types.album import Album
 from app.bot.utils.create_forum_topic import (
     create_forum_topic,
     get_or_create_forum_topic,
+    is_forum_thread_stale_or_invalid_error,
+)
+from app.bot.utils.exceptions import (
+    CreateForumTopicException,
+    NotAForumException,
+    NotEnoughRightsException,
 )
 from app.bot.utils.groq import groq_chat_completion, groq_reply_for_telegram_html
 from app.bot.utils.redis import RedisStorage
@@ -95,16 +101,38 @@ async def handle_incoming_message(
     try:
         await copy_message_to_topic()
     except TelegramBadRequest as ex:
-        if "message thread not found" in ex.message:
-            user_data.message_thread_id = await create_forum_topic(
-                message.bot,
-                manager.config,
-                user_data.full_name,
-            )
+        if is_forum_thread_stale_or_invalid_error(ex.message):
+            user_data.message_thread_id = None
             await redis.update_user(user_data.id, user_data)
-            await copy_message_to_topic()
+            try:
+                await copy_message_to_topic()
+            except NotEnoughRightsException:
+                raise
+            except (CreateForumTopicException, NotAForumException) as ex2:
+                logger.warning(
+                    "Топик недоступен после сброса удалённого треда: %s",
+                    ex2,
+                )
+                user_data.message_thread_id = None
+                await redis.update_user(user_data.id, user_data)
+                return
+            except TelegramBadRequest as ex2:
+                if is_forum_thread_stale_or_invalid_error(ex2.message):
+                    logger.warning(
+                        "Повторная ошибка треда после сброса: %s",
+                        ex2,
+                    )
+                    user_data.message_thread_id = None
+                    await redis.update_user(user_data.id, user_data)
+                    return
+                raise
         else:
             raise
+    except (CreateForumTopicException, NotAForumException):
+        user_data.message_thread_id = None
+        await redis.update_user(user_data.id, user_data)
+        logger.warning("Топик форума недоступен (создание/чат)", exc_info=True)
+        return
 
     # Send a confirmation message to the user
     text = manager.text_message.get("message_sent")

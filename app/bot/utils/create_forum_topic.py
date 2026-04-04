@@ -23,6 +23,12 @@ def is_forum_thread_stale_or_invalid_error(telegram_message: str | None) -> bool
         "bad message thread",
         "topic was deleted",
         "topic is closed",
+        "topic_deleted",
+        "topic_closed",
+        "topic not found",
+        "chat not found",
+        "forum_topic_deleted",
+        "discussion_missing",
     )
     return any(x in m for x in markers)
 

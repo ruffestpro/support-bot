@@ -98,40 +98,39 @@ async def handle_incoming_message(
                 message_thread_id=message_thread_id,
             )
 
+    forwarded_ok = False
     try:
         await copy_message_to_topic()
+        forwarded_ok = True
     except TelegramBadRequest as ex:
+        logger.warning("TelegramBadRequest при доставке в топик: %r", ex.message)
         if is_forum_thread_stale_or_invalid_error(ex.message):
             user_data.message_thread_id = None
             await redis.update_user(user_data.id, user_data)
             try:
                 await copy_message_to_topic()
+                forwarded_ok = True
             except NotEnoughRightsException:
                 raise
             except (CreateForumTopicException, NotAForumException) as ex2:
-                logger.warning(
-                    "Топик недоступен после сброса удалённого треда: %s",
-                    ex2,
-                )
+                logger.warning("Топик недоступен после сброса удалённого треда: %s", ex2)
                 user_data.message_thread_id = None
                 await redis.update_user(user_data.id, user_data)
-                return
             except TelegramBadRequest as ex2:
+                logger.warning("Повторная TelegramBadRequest после сброса треда: %r", ex2.message)
                 if is_forum_thread_stale_or_invalid_error(ex2.message):
-                    logger.warning(
-                        "Повторная ошибка треда после сброса: %s",
-                        ex2,
-                    )
                     user_data.message_thread_id = None
                     await redis.update_user(user_data.id, user_data)
-                    return
-                raise
+                else:
+                    raise
         else:
             raise
     except (CreateForumTopicException, NotAForumException):
         user_data.message_thread_id = None
         await redis.update_user(user_data.id, user_data)
         logger.warning("Топик форума недоступен (создание/чат)", exc_info=True)
+
+    if not forwarded_ok:
         return
 
     # Send a confirmation message to the user

@@ -19,7 +19,11 @@ from app.bot.utils.exceptions import (
     NotAForumException,
     NotEnoughRightsException,
 )
-from app.bot.utils.groq import groq_chat_completion, groq_reply_for_telegram_html
+from app.bot.utils.groq import (
+    groq_chat_completion,
+    groq_vision_completion,
+    groq_reply_for_telegram_html,
+)
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
 
@@ -142,19 +146,50 @@ async def handle_incoming_message(
     # Delete the reply to the edited message
     await msg.delete()
 
-    if (
-        manager.config.groq.enabled
-        and not album
-        and message.text
-        and not await redis.groq_is_operator_engaged(user_data.id)
-    ):
-        history = await redis.groq_get_history(user_data.id)
-        ai_text = await groq_chat_completion(
-            manager.config.groq,
-            message.text,
-            history=history,
-        )
-        await redis.groq_append_turn(user_data.id, "user", message.text)
+    if not album and not await redis.groq_is_operator_engaged(user_data.id):
+        ai_text: str | None = None
+        user_turn: str | None = None
+
+        # — текстовое сообщение → обычная текстовая модель
+        if manager.config.groq.enabled and message.text:
+            history = await redis.groq_get_history(user_data.id)
+            ai_text = await groq_chat_completion(
+                manager.config.groq,
+                message.text,
+                history=history,
+            )
+            user_turn = message.text
+
+        # — фото + подпись → vision-модель
+        elif (
+            manager.config.groq.vision_enabled
+            and message.photo
+            and message.caption
+        ):
+            photo = message.photo[-1]  # наибольшее разрешение
+            try:
+                file = await message.bot.get_file(photo.file_id)
+                buf = await message.bot.download_file(file.file_path)
+                image_bytes = buf.read() if hasattr(buf, "read") else bytes(buf)
+            except Exception:
+                logger.warning("Не удалось скачать фото для vision Groq", exc_info=True)
+                image_bytes = None
+
+            if image_bytes:
+                history = await redis.groq_get_history(user_data.id)
+                ai_text = await groq_vision_completion(
+                    manager.config.groq,
+                    caption=message.caption,
+                    image_bytes=image_bytes,
+                    history=history,
+                )
+                user_turn = f"[фото] {message.caption}"
+
+        # — только фото без подписи → пропуск (ai_text остаётся None)
+
+        if user_turn:
+            await redis.groq_append_turn(user_data.id, "user", user_turn)
+
         if ai_text:
             await redis.groq_append_turn(user_data.id, "assistant", ai_text)
             try:
@@ -165,7 +200,7 @@ async def handle_incoming_message(
             except TelegramBadRequest:
                 logger.exception("Failed to send Groq reply to user")
             else:
-                # Операторы в топике видят тот же ответ ИИ (в ЛС его видит только пользователь)
+                # Операторы в топике видят тот же ответ ИИ
                 if user_data.message_thread_id is not None:
                     header = manager.text_message.get("groq_staff_header")
                     plain = ai_text

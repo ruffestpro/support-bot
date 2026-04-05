@@ -1,6 +1,7 @@
 """Клиент Groq (OpenAI-совместимый chat completions)."""
 from __future__ import annotations
 
+import base64
 import logging
 from html import escape
 
@@ -83,6 +84,81 @@ async def groq_chat_completion(
         return None
     except (KeyError, IndexError, TypeError, ValueError) as e:
         logger.warning("Groq unexpected response: %s", e)
+        return None
+
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+    text = (content or "").strip()
+    return text or None
+
+
+async def groq_vision_completion(
+    groq: GroqConfig,
+    caption: str,
+    image_bytes: bytes,
+    image_mime: str = "image/jpeg",
+    *,
+    history: list[dict] | None = None,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    timeout: float = 60.0,
+) -> str | None:
+    """
+    Отправляет фото (base64) + подпись в vision-модель Groq.
+    Возвращает текст ответа или None при ошибке.
+    """
+    if not groq.vision_enabled:
+        return None
+
+    b64 = base64.b64encode(image_bytes).decode()
+    image_url = f"data:{image_mime};base64,{b64}"
+
+    user_content: list[dict] = [
+        {"type": "text", "text": caption},
+        {"type": "image_url", "image_url": {"url": image_url}},
+    ]
+
+    past = (history or [])[-GROQ_MAX_HISTORY_MESSAGES:]
+    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    messages.extend(past)
+    messages.append({"role": "user", "content": user_content})
+
+    payload = {
+        "model": groq.VISION_MODEL,
+        "messages": messages,
+        "max_tokens": 700,
+        "temperature": 0.35,
+    }
+    headers = {
+        "Authorization": f"Bearer {groq.API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    client_timeout = aiohttp.ClientTimeout(total=timeout)
+    try:
+        async with aiohttp.ClientSession(timeout=client_timeout) as session:
+            async with session.post(
+                GROQ_CHAT_URL,
+                json=payload,
+                headers=headers,
+            ) as response:
+                if response.status >= 400:
+                    body = (await response.text())[:500]
+                    if response.status == 429:
+                        logger.warning("Groq vision 429 (лимит RPD/TPM): %s", body)
+                    elif response.status == 403:
+                        logger.warning("Groq vision 403 Forbidden: %s", body)
+                    else:
+                        logger.warning("Groq vision HTTP error: %s %s", response.status, body)
+                    return None
+                data = await response.json()
+    except aiohttp.ClientError as e:
+        logger.warning("Groq vision request error: %s", e)
+        return None
+    except (KeyError, IndexError, TypeError, ValueError) as e:
+        logger.warning("Groq vision unexpected response: %s", e)
         return None
 
     try:

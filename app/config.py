@@ -44,10 +44,17 @@ class GroqConfig:
     ENABLED: bool
     # После сообщения оператора в топике ИИ молчит столько секунд; затем снова может отвечать в том же топике
     OPERATOR_LOCK_SEC: int
+    # Vision: фото + подпись — отдельная модель с поддержкой изображений
+    VISION_MODEL: str
+    VISION_ENABLED: bool
 
     @property
     def enabled(self) -> bool:
         return self.ENABLED and bool(self.API_KEY and self.API_KEY.strip())
+
+    @property
+    def vision_enabled(self) -> bool:
+        return self.enabled and self.VISION_ENABLED and bool(self.VISION_MODEL)
 
 
 @dataclass
@@ -118,5 +125,10 @@ def load_config() -> Config:
                 3600,
                 env.int("GROQ_OPERATOR_LOCK_SEC", default=3600),
             ),
+            VISION_MODEL=env.str(
+                "GROQ_VISION_MODEL",
+                default="meta-llama/llama-4-scout-17b-16e-instruct",
+            ).strip(),
+            VISION_ENABLED=env.bool("GROQ_VISION_ENABLED", default=False),
         ),
     )

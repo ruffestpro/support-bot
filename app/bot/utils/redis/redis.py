@@ -1,4 +1,5 @@
 import json
+import time
 
 from redis.asyncio import Redis
 
@@ -17,15 +18,32 @@ class RedisStorage:
     GROQ_CTX_MAX_ITEMS = 48
     GROQ_CTX_TTL_SEC = 60 * 60 * 24 * 14
 
-    def __init__(self, redis: Redis, groq_operator_lock_sec: int = 3600) -> None:
+    # Антиспам
+    SPAM_PREFIX = "spam"
+    GROQ_CD_PREFIX = "groq_cd"
+
+    def __init__(
+        self,
+        redis: Redis,
+        groq_operator_lock_sec: int = 3600,
+        spam_max_messages: int = 5,
+        spam_window_sec: int = 30,
+        groq_cooldown_sec: int = 0,
+    ) -> None:
         """
         Initializes the RedisStorage instance.
 
         :param redis: The Redis instance to be used for data storage.
         :param groq_operator_lock_sec: TTL ключа блокировки ИИ после сообщения оператора.
+        :param spam_max_messages: Максимум сообщений за spam_window_sec.
+        :param spam_window_sec: Размер скользящего окна для rate-limit (сек).
+        :param groq_cooldown_sec: Минимальный интервал между ответами ИИ (сек), 0 = без ограничений.
         """
         self.redis = redis
         self._groq_operator_lock_sec = groq_operator_lock_sec
+        self._spam_max = spam_max_messages
+        self._spam_window = spam_window_sec
+        self._groq_cooldown = groq_cooldown_sec
 
     async def _get(self, name: str, key: str | int) -> bytes | None:
         """
@@ -172,3 +190,84 @@ class RedisStorage:
             except (json.JSONDecodeError, TypeError, KeyError):
                 continue
         return out
+
+    # ── Антиспам: скользящее окно ─────────────────────────────────────────────
+
+    def _spam_key(self, user_id: int) -> str:
+        return f"{self.SPAM_PREFIX}:{user_id}"
+
+    async def spam_check_and_record(self, user_id: int) -> bool:
+        """
+        Возвращает True, если сообщение разрешено (в рамках лимита).
+        Возвращает False, если пользователь превысил лимит в текущем окне.
+        Использует sliding window на Redis sorted set (score = timestamp).
+        """
+        if self._spam_max <= 0:
+            return True
+
+        key = self._spam_key(user_id)
+        now = time.time()
+        window_start = now - self._spam_window
+
+        async with self.redis.client() as client:
+            pipe = client.pipeline()
+            # удаляем устаревшие метки
+            pipe.zremrangebyscore(key, "-inf", window_start)
+            # считаем оставшиеся
+            pipe.zcard(key)
+            results = await pipe.execute()
+
+        count = results[1]
+        if count >= self._spam_max:
+            return False
+
+        async with self.redis.client() as client:
+            pipe = client.pipeline()
+            pipe.zadd(key, {str(now): now})
+            pipe.expire(key, self._spam_window + 1)
+            await pipe.execute()
+
+        return True
+
+    async def spam_remaining_wait(self, user_id: int) -> int:
+        """
+        Сколько секунд осталось до сброса окна (для текста предупреждения).
+        """
+        key = self._spam_key(user_id)
+        now = time.time()
+        window_start = now - self._spam_window
+
+        async with self.redis.client() as client:
+            oldest = await client.zrangebyscore(
+                key, window_start, "+inf", start=0, num=1, withscores=True,
+            )
+
+        if not oldest:
+            return 0
+        oldest_ts = oldest[0][1]
+        wait = int(self._spam_window - (now - oldest_ts)) + 1
+        return max(0, wait)
+
+    # ── Groq cooldown ─────────────────────────────────────────────────────────
+
+    def _groq_cd_key(self, user_id: int) -> str:
+        return f"{self.GROQ_CD_PREFIX}:{user_id}"
+
+    async def groq_cooldown_ok(self, user_id: int) -> bool:
+        """
+        True — ИИ может ответить (cooldown истёк или не задан).
+        False — ещё рано, пользователь получил ответ ИИ недавно.
+        """
+        if self._groq_cooldown <= 0:
+            return True
+        key = self._groq_cd_key(user_id)
+        async with self.redis.client() as client:
+            return not bool(await client.get(key))
+
+    async def groq_cooldown_set(self, user_id: int) -> None:
+        """Ставим cooldown-ключ после ответа ИИ."""
+        if self._groq_cooldown <= 0:
+            return
+        key = self._groq_cd_key(user_id)
+        async with self.redis.client() as client:
+            await client.set(key, "1", ex=self._groq_cooldown)

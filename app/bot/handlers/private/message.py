@@ -79,6 +79,18 @@ async def handle_incoming_message(
     if user_data.is_banned:
         return
 
+    # Антиспам: скользящее окно rate-limit
+    if not await redis.spam_check_and_record(user_data.id):
+        wait = await redis.spam_remaining_wait(user_data.id)
+        text = manager.text_message.get("rate_limit_exceeded").format(wait=wait)
+        try:
+            warn = await message.reply(text, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(5)
+            await warn.delete()
+        except TelegramBadRequest:
+            pass
+        return
+
     async def copy_message_to_topic():
         """
         Copies the message or album to the forum topic.
@@ -146,7 +158,11 @@ async def handle_incoming_message(
     # Delete the reply to the edited message
     await msg.delete()
 
-    if not album and not await redis.groq_is_operator_engaged(user_data.id):
+    if (
+        not album
+        and not await redis.groq_is_operator_engaged(user_data.id)
+        and await redis.groq_cooldown_ok(user_data.id)
+    ):
         ai_text: str | None = None
         user_turn: str | None = None
 
@@ -191,6 +207,7 @@ async def handle_incoming_message(
             await redis.groq_append_turn(user_data.id, "user", user_turn)
 
         if ai_text:
+            await redis.groq_cooldown_set(user_data.id)
             await redis.groq_append_turn(user_data.id, "assistant", ai_text)
             try:
                 await message.answer(

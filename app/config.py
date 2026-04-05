@@ -36,6 +36,16 @@ class BotConfig:
 
 
 @dataclass
+class AntiSpamConfig:
+    """Настройки антиспама для приватных сообщений."""
+    # Скользящее окно: не более MAX_MESSAGES сообщений за WINDOW_SEC секунд
+    MAX_MESSAGES: int
+    WINDOW_SEC: int
+    # Cooldown между ответами ИИ (0 = без ограничения)
+    GROQ_COOLDOWN_SEC: int
+
+
+@dataclass
 class GroqConfig:
     """Опциональная интеграция Groq (OpenAI-совместимый API)."""
     API_KEY: str
@@ -89,10 +99,12 @@ class Config:
     - bot (BotConfig): The bot configuration.
     - redis (RedisConfig): The Redis configuration.
     - groq (GroqConfig): Groq LLM (пустой ключ = выключено).
+    - antispam (AntiSpamConfig): Настройки антиспама.
     """
     bot: BotConfig
     redis: RedisConfig
     groq: GroqConfig
+    antispam: AntiSpamConfig
 
 
 def load_config() -> Config:
@@ -105,6 +117,11 @@ def load_config() -> Config:
     env.read_env()
 
     return Config(
+        antispam=AntiSpamConfig(
+            MAX_MESSAGES=max(1, env.int("ANTISPAM_MAX_MESSAGES", default=5)),
+            WINDOW_SEC=max(5, env.int("ANTISPAM_WINDOW_SEC", default=30)),
+            GROQ_COOLDOWN_SEC=max(0, env.int("ANTISPAM_GROQ_COOLDOWN_SEC", default=10)),
+        ),
         bot=BotConfig(
             TOKEN=env.str("BOT_TOKEN"),
             DEV_ID=env.int("BOT_DEV_ID"),

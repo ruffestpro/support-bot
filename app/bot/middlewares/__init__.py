@@ -24,6 +24,9 @@ def register_middlewares(dp: Dispatcher, **kwargs) -> None:
         RedisMiddleware(
             kwargs["redis"],
             groq_operator_lock_sec=cfg.groq.OPERATOR_LOCK_SEC,
+            spam_max_messages=cfg.antispam.MAX_MESSAGES,
+            spam_window_sec=cfg.antispam.WINDOW_SEC,
+            groq_cooldown_sec=cfg.antispam.GROQ_COOLDOWN_SEC,
         ),
     )
     # Register ManagerMiddleware

@@ -12,21 +12,21 @@ from app.bot.utils.texts import SUPPORTED_LANGUAGES
 class RedisMiddleware(BaseMiddleware):
     """
     Middleware for integrating Redis storage with Aiogram.
-
-    Args:
-        redis (Redis): The Redis instance for data storage.
-        groq_operator_lock_sec: TTL блокировки ИИ после сообщения оператора (из config).
     """
 
-    def __init__(self, redis: Redis, groq_operator_lock_sec: int = 3600) -> None:
-        """
-        Initializes the RedisMiddleware instance.
-
-        :param redis: The Redis instance for data storage.
-        :param groq_operator_lock_sec: Секунды, на которые ставится ключ после ответа оператора.
-        """
+    def __init__(
+        self,
+        redis: Redis,
+        groq_operator_lock_sec: int = 3600,
+        spam_max_messages: int = 5,
+        spam_window_sec: int = 30,
+        groq_cooldown_sec: int = 10,
+    ) -> None:
         self.redis = redis
         self._groq_operator_lock_sec = groq_operator_lock_sec
+        self._spam_max = spam_max_messages
+        self._spam_window = spam_window_sec
+        self._groq_cooldown = groq_cooldown_sec
 
     async def __call__(
             self,
@@ -46,6 +46,9 @@ class RedisMiddleware(BaseMiddleware):
         redis = RedisStorage(
             self.redis,
             groq_operator_lock_sec=self._groq_operator_lock_sec,
+            spam_max_messages=self._spam_max,
+            spam_window_sec=self._spam_window,
+            groq_cooldown_sec=self._groq_cooldown,
         )
 
         # Extract the chat and user objects from data

@@ -24,22 +24,32 @@ router.message.filter(
 async def handler(message: Message, manager: Manager, redis: RedisStorage) -> None:
     await asyncio.sleep(3)
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
-
-    # Generate a URL for the user's profile
-    url = f"https://t.me/{user_data.username[1:]}" if user_data.username != "-" else f"tg://user?id={user_data.id}"
-
-    # Get the appropriate text based on the user's state
-    text = manager.text_message.get("user_started_bot")
-
-    message = await message.bot.send_message(
-        chat_id=manager.config.bot.GROUP_ID,
-        text=text.format(name=hlink(user_data.full_name, url)),
-        message_thread_id=user_data.message_thread_id
+    web_session = None if user_data else await redis.get_web_by_message_thread_id(
+        message.message_thread_id,
     )
 
-    # Pin the message
-    await message.pin()
+    if user_data:
+        url = (
+            f"https://t.me/{user_data.username[1:]}"
+            if user_data.username != "-"
+            else f"tg://user?id={user_data.id}"
+        )
+        text = manager.text_message.get("user_started_bot")
+        pin_text = text.format(name=hlink(user_data.full_name, url))
+        thread_id = user_data.message_thread_id
+    elif web_session:
+        label = web_session.display_name or web_session.identity_id[:8]
+        pin_text = f"🌐 <b>Веб-ЛК:</b> {label}\n<code>{web_session.identity_id}</code>"
+        thread_id = web_session.message_thread_id
+    else:
+        return None  # noqa
+
+    pin_message = await message.bot.send_message(
+        chat_id=manager.config.bot.GROUP_ID,
+        text=pin_text,
+        message_thread_id=thread_id,
+    )
+    await pin_message.pin()
 
 
 @router.message(F.pinned_message | F.forum_topic_edited | F.forum_topic_closed | F.forum_topic_reopened)
@@ -67,13 +77,33 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
     :return: None
     """
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
+    web_session = None if user_data else await redis.get_web_by_message_thread_id(
+        message.message_thread_id,
+    )
+    if not user_data and not web_session:
+        return None  # noqa
 
-    if user_data.message_silent_mode:
-        # If silent mode is enabled, ignore all messages.
+    if user_data and user_data.message_silent_mode:
+        return
+    if web_session and web_session.message_silent_mode:
         return
 
     text = manager.text_message.get("message_sent_to_user")
+
+    if web_session:
+        staff_text = message.text or message.caption
+        if not staff_text and album:
+            staff_text = "[Оператор прислал вложение — откройте топик в Telegram]"
+        if staff_text and staff_text.strip():
+            await redis.web_append_message(
+                web_session.identity_id,
+                "staff",
+                staff_text.strip(),
+            )
+        msg = await message.reply(text)
+        await asyncio.sleep(5)
+        await msg.delete()
+        return
 
     try:
         if not album:
@@ -87,7 +117,6 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
         else:
             text = manager.text_message.get("message_not_sent")
     else:
-        # История для Groq: текст ответа оператора из топика (без альбомов)
         if manager.config.groq.enabled and not album:
             staff_text = message.text or message.caption
             if staff_text and staff_text.strip():
@@ -98,9 +127,6 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
                 )
                 await redis.groq_mark_operator_engaged(user_data.id)
 
-    # Reply to the edited message with the specified text
     msg = await message.reply(text)
-    # Wait for 5 seconds before deleting the reply
     await asyncio.sleep(5)
-    # Delete the reply to the edited message
     await msg.delete()

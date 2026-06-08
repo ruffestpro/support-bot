@@ -91,6 +91,16 @@ class RedisConfig:
 
 
 @dataclass
+class WebApiConfig:
+    """HTTP API для чата поддержки из веб-ЛК."""
+    HOST: str
+    PORT: int
+    ENABLED: bool
+    CORS_ORIGINS: tuple[str, ...]
+    CABINET_API_URL: str
+
+
+@dataclass
 class Config:
     """
     Data class representing the overall configuration for the application.
@@ -100,11 +110,18 @@ class Config:
     - redis (RedisConfig): The Redis configuration.
     - groq (GroqConfig): Groq LLM (пустой ключ = выключено).
     - antispam (AntiSpamConfig): Настройки антиспама.
+    - web (WebApiConfig): HTTP API для веб-ЛК.
     """
     bot: BotConfig
     redis: RedisConfig
     groq: GroqConfig
     antispam: AntiSpamConfig
+    web: WebApiConfig
+
+
+def _parse_cors_origins(raw: str) -> tuple[str, ...]:
+    parts = [p.strip().rstrip("/") for p in (raw or "").split(",")]
+    return tuple(p for p in parts if p)
 
 
 def load_config() -> Config:
@@ -147,5 +164,14 @@ def load_config() -> Config:
                 default="meta-llama/llama-4-scout-17b-16e-instruct",
             ).strip(),
             VISION_ENABLED=env.bool("GROQ_VISION_ENABLED", default=False),
+        ),
+        web=WebApiConfig(
+            HOST=env.str("WEB_API_HOST", default="0.0.0.0"),
+            PORT=max(1, env.int("WEB_API_PORT", default=8080)),
+            ENABLED=env.bool("WEB_API_ENABLED", default=True),
+            CORS_ORIGINS=_parse_cors_origins(
+                env.str("WEB_CORS_ORIGINS", default="http://localhost:5174"),
+            ),
+            CABINET_API_URL=env.str("CABINET_API_URL", default="").strip().rstrip("/"),
         ),
     )

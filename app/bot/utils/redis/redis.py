@@ -1,9 +1,11 @@
 import json
 import time
+import uuid
+from datetime import datetime, timezone, timedelta
 
 from redis.asyncio import Redis
 
-from .models import UserData
+from .models import UserData, WebSessionData, WebChatMessage
 
 
 GROQ_OPERATOR_CONTENT_PREFIX = "[Поддержка (оператор)]"
@@ -13,6 +15,10 @@ class RedisStorage:
     """Class for managing user data storage using Redis."""
 
     NAME = "users"
+    WEB_NAME = "web_users"
+    WEB_MSG_PREFIX = "web_msgs"
+    WEB_MSG_MAX_ITEMS = 500
+    WEB_MSG_TTL_SEC = 60 * 60 * 24 * 30
     GROQ_CTX_PREFIX = "groq_ctx"
     GROQ_OP_PREFIX = "groq_op"
     GROQ_CTX_MAX_ITEMS = 48
@@ -271,3 +277,121 @@ class RedisStorage:
         key = self._groq_cd_key(user_id)
         async with self.redis.client() as client:
             await client.set(key, "1", ex=self._groq_cooldown)
+
+    # ── Веб-ЛК: сессии и сообщения ────────────────────────────────────────────
+
+    def _web_msg_key(self, identity_id: str) -> str:
+        return f"{self.WEB_MSG_PREFIX}:{identity_id}"
+
+    def _web_spam_key(self, identity_id: str) -> str:
+        return f"{self.SPAM_PREFIX}:web:{identity_id}"
+
+    async def _update_web_index(self, message_thread_id: int, identity_id: str) -> None:
+        index_key = f"{self.WEB_NAME}_index_{message_thread_id}"
+        await self._set(index_key, identity_id, "1")
+
+    async def get_web_session(self, identity_id: str) -> WebSessionData | None:
+        data = await self._get(self.WEB_NAME, identity_id)
+        if data is None:
+            return None
+        return WebSessionData(**json.loads(data))
+
+    async def update_web_session(self, data: WebSessionData) -> None:
+        json_data = json.dumps(data.to_dict())
+        await self._set(self.WEB_NAME, data.identity_id, json_data)
+        if data.message_thread_id is not None:
+            await self._update_web_index(data.message_thread_id, data.identity_id)
+
+    async def get_web_by_message_thread_id(self, message_thread_id: int) -> WebSessionData | None:
+        index_key = f"{self.WEB_NAME}_index_{message_thread_id}"
+        async with self.redis.client() as client:
+            identity_ids = await client.hkeys(index_key)
+        if not identity_ids:
+            return None
+        identity_id = identity_ids[0]
+        if isinstance(identity_id, bytes):
+            identity_id = identity_id.decode()
+        return await self.get_web_session(str(identity_id))
+
+    async def web_spam_check_and_record(self, identity_id: str) -> bool:
+        if self._spam_max <= 0:
+            return True
+        key = self._web_spam_key(identity_id)
+        now = time.time()
+        window_start = now - self._spam_window
+        async with self.redis.client() as client:
+            pipe = client.pipeline()
+            pipe.zremrangebyscore(key, "-inf", window_start)
+            pipe.zcard(key)
+            results = await pipe.execute()
+        if results[1] >= self._spam_max:
+            return False
+        async with self.redis.client() as client:
+            pipe = client.pipeline()
+            pipe.zadd(key, {str(now): now})
+            pipe.expire(key, self._spam_window + 1)
+            await pipe.execute()
+        return True
+
+    async def web_spam_remaining_wait(self, identity_id: str) -> int:
+        key = self._web_spam_key(identity_id)
+        now = time.time()
+        window_start = now - self._spam_window
+        async with self.redis.client() as client:
+            oldest = await client.zrangebyscore(
+                key, window_start, "+inf", start=0, num=1, withscores=True,
+            )
+        if not oldest:
+            return 0
+        oldest_ts = oldest[0][1]
+        wait = int(self._spam_window - (now - oldest_ts)) + 1
+        return max(0, wait)
+
+    @staticmethod
+    def _now_iso() -> str:
+        return datetime.now(timezone(timedelta(hours=3))).isoformat()
+
+    async def web_append_message(
+        self,
+        identity_id: str,
+        role: str,
+        text: str,
+    ) -> WebChatMessage:
+        body = (text or "").strip()
+        if not body:
+            raise ValueError("empty message")
+        if role not in ("user", "staff"):
+            role = "user"
+        msg = WebChatMessage(
+            id=uuid.uuid4().hex,
+            role=role,
+            text=body[:8000],
+            created_at=self._now_iso(),
+        )
+        payload = json.dumps(msg.to_dict(), ensure_ascii=False)
+        key = self._web_msg_key(identity_id)
+        async with self.redis.client() as client:
+            await client.rpush(key, payload)
+            await client.ltrim(key, -self.WEB_MSG_MAX_ITEMS, -1)
+            await client.expire(key, self.WEB_MSG_TTL_SEC)
+        return msg
+
+    async def web_list_messages(
+        self,
+        identity_id: str,
+        since: str | None = None,
+    ) -> list[WebChatMessage]:
+        key = self._web_msg_key(identity_id)
+        async with self.redis.client() as client:
+            raw = await client.lrange(key, 0, -1)
+        out: list[WebChatMessage] = []
+        for item in raw:
+            try:
+                obj = json.loads(item)
+                msg = WebChatMessage(**obj)
+            except (json.JSONDecodeError, TypeError, KeyError):
+                continue
+            if since and msg.created_at <= since:
+                continue
+            out.append(msg)
+        return out

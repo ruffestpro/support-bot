@@ -8,6 +8,7 @@ from aiogram.utils.markdown import hcode, hbold
 
 from app.bot.manager import Manager
 from app.bot.utils.redis import RedisStorage
+from app.bot.utils.redis.models import WebSessionData
 
 router_id = Router()
 router_id.message.filter(
@@ -46,35 +47,38 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
     :return: None
     """
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
+    web_session = None if user_data else await redis.get_web_by_message_thread_id(
+        message.message_thread_id,
+    )
+    if not user_data and not web_session:
+        return None  # noqa
 
-    if user_data.message_silent_mode:
+    target = user_data or web_session
+    assert target is not None
+
+    if target.message_silent_mode:
         text = manager.text_message.get("silent_mode_disabled")
         with suppress(TelegramBadRequest):
-            # Reply with the specified text
             await message.reply(text)
-
-            # Unpin the chat message with the silent mode status
-            await message.bot.unpin_chat_message(
-                chat_id=message.chat.id,
-                message_id=user_data.message_silent_id,
-            )
-
-        user_data.message_silent_mode = False
-        user_data.message_silent_id = None
+            if target.message_silent_id is not None:
+                await message.bot.unpin_chat_message(
+                    chat_id=message.chat.id,
+                    message_id=target.message_silent_id,
+                )
+        target.message_silent_mode = False
+        target.message_silent_id = None
     else:
         text = manager.text_message.get("silent_mode_enabled")
         with suppress(TelegramBadRequest):
-            # Reply with the specified text
             msg = await message.reply(text)
-
-            # Pin the chat message with the silent mode status
             await msg.pin(disable_notification=True)
+            target.message_silent_mode = True
+            target.message_silent_id = msg.message_id
 
-        user_data.message_silent_mode = True
-        user_data.message_silent_id = msg.message_id
-
-    await redis.update_user(user_data.id, user_data)
+    if user_data:
+        await redis.update_user(user_data.id, user_data)
+    else:
+        await redis.update_web_session(web_session)  # type: ignore[arg-type]
 
 
 @router.message(Command("information"))
@@ -88,19 +92,38 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
     :return: None
     """
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
+    web_session = None if user_data else await redis.get_web_by_message_thread_id(
+        message.message_thread_id,
+    )
+    if not user_data and not web_session:
+        return None  # noqa
 
-    format_data = user_data.to_dict()
-    format_data["full_name"] = hbold(format_data["full_name"])
-    text = manager.text_message.get("user_information").format_map(format_data)
-    main_bot = manager.config.bot.BOT_USERNAME
-    if main_bot:
-        link = manager.text_message.get("user_information_open_link").format(
-            bot_username=main_bot,
-            tg_id=user_data.id,
-        )
-        text = f"{text}\n\n{link}"
-    await message.reply(text)
+    if user_data:
+        format_data = user_data.to_dict()
+        format_data["full_name"] = hbold(format_data["full_name"])
+        text = manager.text_message.get("user_information").format_map(format_data)
+        main_bot = manager.config.bot.BOT_USERNAME
+        if main_bot:
+            link = manager.text_message.get("user_information_open_link").format(
+                bot_username=main_bot,
+                tg_id=user_data.id,
+            )
+            text = f"{text}\n\n{link}"
+        await message.reply(text)
+        return
+
+    assert isinstance(web_session, WebSessionData)
+    lines = [
+        f"🌐 {hbold('Веб-ЛК')}",
+        f"Имя: {hbold(web_session.display_name)}",
+        f"Identity: {hcode(web_session.identity_id)}",
+    ]
+    if web_session.email:
+        lines.append(f"Email: {hcode(web_session.email)}")
+    if web_session.tg_id is not None:
+        lines.append(f"Telegram ID: {hcode(str(web_session.tg_id))}")
+    lines.append(f"Заблокирован: {hcode(str(web_session.is_banned))}")
+    await message.reply("\n".join(lines))
 
 
 @router.message(Command(commands=["ban"]))
@@ -115,15 +138,29 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
     :return: None
     """
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
+    web_session = None if user_data else await redis.get_web_by_message_thread_id(
+        message.message_thread_id,
+    )
+    if not user_data and not web_session:
+        return None  # noqa
 
-    if user_data.is_banned:
-        user_data.is_banned = False
+    if user_data:
+        if user_data.is_banned:
+            user_data.is_banned = False
+            text = manager.text_message.get("user_unblocked")
+        else:
+            user_data.is_banned = True
+            text = manager.text_message.get("user_blocked")
+        await message.reply(text)
+        await redis.update_user(user_data.id, user_data)
+        return
+
+    assert isinstance(web_session, WebSessionData)
+    if web_session.is_banned:
+        web_session.is_banned = False
         text = manager.text_message.get("user_unblocked")
     else:
-        user_data.is_banned = True
+        web_session.is_banned = True
         text = manager.text_message.get("user_blocked")
-
-    # Reply with the specified text
     await message.reply(text)
-    await redis.update_user(user_data.id, user_data)
+    await redis.update_web_session(web_session)

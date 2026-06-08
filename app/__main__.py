@@ -13,7 +13,7 @@ warnings.filterwarnings(
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.fsm.storage.redis import RedisStorage as FsmRedisStorage
 from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -23,7 +23,7 @@ from uvicorn import Server as UvicornServer
 from .bot import commands
 from .bot.handlers import include_routers
 from .bot.middlewares import register_middlewares
-from .bot.utils.redis import RedisStorage
+from .bot.utils.redis import RedisStorage as AppRedisStorage
 from .config import load_config, Config
 from .logger import setup_logger
 from .web import create_web_app
@@ -87,7 +87,7 @@ async def on_startup(
 def _create_web_server(
     bot: Bot,
     config: Config,
-    redis_storage: RedisStorage,
+    redis_storage: AppRedisStorage,
 ) -> UvicornServer | None:
     if not config.web.ENABLED:
         _log.info("Web API: выключен (WEB_API_ENABLED=false)")
@@ -134,8 +134,8 @@ async def main() -> None:
         jobstores={"default": job_store},
     )
 
-    # Initialize Redis storage
-    storage = RedisStorage.from_url(
+    # Initialize Redis storage (aiogram FSM)
+    storage = FsmRedisStorage.from_url(
         url=config.redis.dsn(),
     )
 
@@ -146,7 +146,7 @@ async def main() -> None:
             parse_mode=ParseMode.HTML,
         ),
     )
-    redis_storage = RedisStorage(
+    redis_storage = AppRedisStorage(
         storage.redis,
         groq_operator_lock_sec=config.groq.OPERATOR_LOCK_SEC,
         spam_max_messages=config.antispam.MAX_MESSAGES,

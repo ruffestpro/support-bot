@@ -160,6 +160,7 @@ cython_debug/
 #.idea/
 
 # OpenMemory / IDE / локальная история (не для публичного репо)
+openmemory.md
 .cursor/rules/openmemory.mdc
 .specstory/
 .cursorindexingignore

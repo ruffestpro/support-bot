@@ -54,6 +54,33 @@ async def get_or_create_forum_topic(
     return message_thread_id
 
 
+def _retry_forum_topic_without_emoji(ex: TelegramBadRequest) -> bool:
+    """Кастомный emoji в топике требует Premium у владельца бота — пробуем без иконки."""
+    m = (ex.message or "").upper()
+    return (
+        "PREMIUM_ACCOUNT_REQUIRED" in m
+        or "CUSTOM_EMOJI_NOT_ALLOWED" in m
+        or "STICKER_ID_INVALID" in m
+    )
+
+
+async def _create_forum_topic_once(
+    bot: Bot,
+    config: Config,
+    name: str,
+    emoji_id: str | None,
+) -> int:
+    kwargs: dict = {
+        "chat_id": config.bot.GROUP_ID,
+        "name": name,
+        "request_timeout": 30,
+    }
+    if emoji_id:
+        kwargs["icon_custom_emoji_id"] = emoji_id
+    forum_topic = await bot.create_forum_topic(**kwargs)
+    return forum_topic.message_thread_id
+
+
 async def create_forum_topic(bot: Bot, config: Config, name: str) -> int:
     """
     Creates a forum topic in the specified chat.
@@ -66,30 +93,32 @@ async def create_forum_topic(bot: Bot, config: Config, name: str) -> int:
     :raises NotEnoughRightsException: If the bot doesn't have enough rights to create a forum topic.
     :raises CreateForumTopicException: If an error occurs while creating the forum topic.
     """
-    try:
-        # Attempt to create a forum topic
-        forum_topic = await bot.create_forum_topic(
-            chat_id=config.bot.GROUP_ID,
-            name=name,
-            icon_custom_emoji_id=config.bot.BOT_EMOJI_ID,
-            request_timeout=30,
-        )
-        return forum_topic.message_thread_id
+    emoji_id = (config.bot.BOT_EMOJI_ID or "").strip() or None
 
+    try:
+        return await _create_forum_topic_once(bot, config, name, emoji_id)
     except TelegramRetryAfter as ex:
-        # Handle Retry-After exception (rate limiting)
         logging.warning(ex.message)
         await asyncio.sleep(ex.retry_after)
         return await create_forum_topic(bot, config, name)
 
     except TelegramBadRequest as ex:
-        if "not enough rights" in ex.message:
-            # Raise an exception if the bot doesn't have enough rights
+        if emoji_id and _retry_forum_topic_without_emoji(ex):
+            logging.warning(
+                "create_forum_topic: %s — повтор без BOT_EMOJI_ID",
+                ex.message,
+            )
+            try:
+                return await _create_forum_topic_once(bot, config, name, None)
+            except TelegramBadRequest as ex2:
+                ex = ex2
+
+        lowered = (ex.message or "").lower()
+        if "not enough rights" in lowered:
             raise NotEnoughRightsException
 
-        elif "not a forum" in ex.message:
-            # Raise an exception if the chat is not a forum
+        if "not a forum" in lowered:
             raise NotAForumException
 
-        # Raise a generic exception for other cases
+        logging.error("create_forum_topic failed: %s", ex.message)
         raise CreateForumTopicException

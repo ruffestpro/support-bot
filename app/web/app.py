@@ -9,6 +9,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import Config
 from app.bot.utils.create_forum_topic import is_forum_thread_stale_or_invalid_error
 from app.bot.utils.create_web_forum_topic import get_or_create_web_forum_topic
+from app.bot.utils.exceptions import (
+    CreateForumTopicException,
+    NotAForumException,
+    NotEnoughRightsException,
+)
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import WebSessionData
 from app.web.auth import CabinetIdentity, verify_cabinet_request
@@ -118,10 +123,9 @@ def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> Fas
             )
 
         text = body.text.strip()
-        user_msg = await redis_storage.web_append_message(identity.id, "user", text)
-
         topic_text = f"{_staff_topic_header(identity)}\n\n{text}"
-        try:
+
+        async def _deliver_to_topic() -> None:
             thread_id = await get_or_create_web_forum_topic(
                 bot, redis_storage, config, session,
             )
@@ -131,21 +135,16 @@ def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> Fas
                 text=topic_text,
                 parse_mode=ParseMode.HTML,
             )
+
+        try:
+            await _deliver_to_topic()
         except TelegramBadRequest as ex:
             logger.warning("TelegramBadRequest при доставке web-сообщения: %r", ex.message)
             if is_forum_thread_stale_or_invalid_error(ex.message):
                 session.message_thread_id = None
                 await redis_storage.update_web_session(session)
                 try:
-                    thread_id = await get_or_create_web_forum_topic(
-                        bot, redis_storage, config, session,
-                    )
-                    await bot.send_message(
-                        chat_id=config.bot.GROUP_ID,
-                        message_thread_id=thread_id,
-                        text=topic_text,
-                        parse_mode=ParseMode.HTML,
-                    )
+                    await _deliver_to_topic()
                 except TelegramBadRequest:
                     logger.exception("Повторная ошибка доставки web-сообщения в топик")
                     raise HTTPException(
@@ -157,7 +156,14 @@ def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> Fas
                     status.HTTP_502_BAD_GATEWAY,
                     detail="Cannot deliver message to support",
                 ) from ex
+        except (CreateForumTopicException, NotEnoughRightsException, NotAForumException) as ex:
+            logger.error("Ошибка forum topic для web-ЛК: %s", ex)
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                detail=str(ex),
+            ) from ex
 
+        user_msg = await redis_storage.web_append_message(identity.id, "user", text)
         return PostMessageResponse(message=ChatMessageOut(**user_msg.to_dict()))
 
     return app

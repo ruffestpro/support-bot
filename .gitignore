@@ -159,5 +159,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# OpenMemory - IDE/Assistant specific rules
+# OpenMemory / IDE / локальная история (не для публичного репо)
 .cursor/rules/openmemory.mdc
+.specstory/
+.cursorindexingignore
+.vscode/

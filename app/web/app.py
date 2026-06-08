@@ -75,7 +75,7 @@ async def _get_or_init_session(
 
 
 def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> FastAPI:
-    app = FastAPI(title="R2D2 Support Web API", version="1.0.0")
+    app = FastAPI(title="Support Web API", version="1.0.0")
     app.state.bot = bot
     app.state.config = config
     app.state.redis = redis_storage

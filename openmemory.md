@@ -1,4 +1,4 @@
-# r2d2helpbot (support-bot)
+# support-bot
 
 ## Overview
 Telegram support bot: пользователь → forum topic в супергруппе; оператор отвечает в топике. Fork ruffestpro/support-bot (Groq, Redis, Docker).

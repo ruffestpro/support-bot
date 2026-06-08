@@ -88,8 +88,8 @@ docker compose up --build -d
 | `WEB_API_ENABLED` | bool | HTTP API для веб-ЛК | `true` |
 | `WEB_API_HOST` | str | Хост Web API | `0.0.0.0` |
 | `WEB_API_PORT` | int | Порт Web API | `8080` |
-| `WEB_CORS_ORIGINS` | str | Origins ЛК через запятую | `https://cp.r2d2vpn.com` |
-| `CABINET_API_URL` | str | URL ЛК для проверки сессии | `https://cp.r2d2vpn.com` |
+| `WEB_CORS_ORIGINS` | str | Origins ЛК через запятую | `https://cp.example.com` |
+| `CABINET_API_URL` | str | URL ЛК для проверки сессии | `https://cp.example.com` |
 
 Примечания:
 

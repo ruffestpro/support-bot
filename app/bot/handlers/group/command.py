@@ -123,7 +123,15 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
     if web_session.tg_id is not None:
         lines.append(f"Telegram ID: {hcode(str(web_session.tg_id))}")
     lines.append(f"Заблокирован: {hcode(str(web_session.is_banned))}")
-    await message.reply("\n".join(lines))
+    text = "\n".join(lines)
+    main_bot = manager.config.bot.BOT_USERNAME
+    if main_bot and web_session.tg_id is not None:
+        link = manager.text_message.get("user_information_open_link").format(
+            bot_username=main_bot,
+            tg_id=web_session.tg_id,
+        )
+        text = f"{text}\n\n{link}"
+    await message.reply(text)
 
 
 @router.message(Command(commands=["ban"]))

@@ -104,7 +104,7 @@ async def create_forum_topic(bot: Bot, config: Config, name: str) -> int:
 
     except TelegramBadRequest as ex:
         if emoji_id and _retry_forum_topic_without_emoji(ex):
-            logging.warning(
+            logging.info(
                 "create_forum_topic: %s — повтор без BOT_EMOJI_ID",
                 ex.message,
             )

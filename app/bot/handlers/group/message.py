@@ -100,6 +100,13 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
                 "staff",
                 staff_text.strip(),
             )
+            if manager.config.groq.enabled and not album:
+                await redis.groq_append_turn(
+                    web_session.identity_id,
+                    "assistant",
+                    f"{GROQ_OPERATOR_CONTENT_PREFIX}: {staff_text.strip()}",
+                )
+                await redis.groq_mark_operator_engaged(web_session.identity_id)
         msg = await message.reply(text)
         await asyncio.sleep(5)
         await msg.delete()

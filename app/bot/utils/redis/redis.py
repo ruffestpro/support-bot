@@ -139,28 +139,35 @@ class RedisStorage:
             user_ids = await client.hkeys(self.NAME)
             return [int(user_id) for user_id in user_ids]
 
-    def _groq_ctx_key(self, user_id: int) -> str:
-        return f"{self.GROQ_CTX_PREFIX}:{user_id}"
+    @staticmethod
+    def _groq_subject(subject: int | str) -> str:
+        """int — Telegram user id; str — identity_id веб-ЛК."""
+        if isinstance(subject, str):
+            return f"web:{subject}"
+        return str(subject)
 
-    def _groq_op_key(self, user_id: int) -> str:
-        return f"{self.GROQ_OP_PREFIX}:{user_id}"
+    def _groq_ctx_key(self, subject: int | str) -> str:
+        return f"{self.GROQ_CTX_PREFIX}:{self._groq_subject(subject)}"
 
-    async def groq_mark_operator_engaged(self, user_id: int) -> None:
+    def _groq_op_key(self, subject: int | str) -> str:
+        return f"{self.GROQ_OP_PREFIX}:{self._groq_subject(subject)}"
+
+    async def groq_mark_operator_engaged(self, subject: int | str) -> None:
         """
         Оператор написал в топике — ИИ не отвечает в ЛС до истечения TTL (тот же топик,
         затем ИИ снова может отвечать на новые сообщения пользователя).
         """
-        key = self._groq_op_key(user_id)
+        key = self._groq_op_key(subject)
         async with self.redis.client() as client:
             await client.set(key, "1", ex=self._groq_operator_lock_sec)
 
-    async def groq_is_operator_engaged(self, user_id: int) -> bool:
+    async def groq_is_operator_engaged(self, subject: int | str) -> bool:
         """True, пока активен ключ после последнего сообщения оператора (см. groq_mark_operator_engaged)."""
-        key = self._groq_op_key(user_id)
+        key = self._groq_op_key(subject)
         async with self.redis.client() as client:
             return bool(await client.get(key))
 
-    async def groq_append_turn(self, user_id: int, role: str, content: str) -> None:
+    async def groq_append_turn(self, subject: int | str, role: str, content: str) -> None:
         """
         Добавляет реплику в историю для Groq (порядок хронологический).
         role: "user" | "assistant" (assistant = ответ ИИ или оператора в топике).
@@ -173,15 +180,15 @@ class RedisStorage:
         if role not in ("user", "assistant"):
             role = "user"
         payload = json.dumps({"role": role, "content": text}, ensure_ascii=False)
-        key = self._groq_ctx_key(user_id)
+        key = self._groq_ctx_key(subject)
         async with self.redis.client() as client:
             await client.rpush(key, payload)
             await client.ltrim(key, -self.GROQ_CTX_MAX_ITEMS, -1)
             await client.expire(key, self.GROQ_CTX_TTL_SEC)
 
-    async def groq_get_history(self, user_id: int) -> list[dict]:
+    async def groq_get_history(self, subject: int | str) -> list[dict]:
         """Сообщения для chat completions (без текущего запроса пользователя)."""
-        key = self._groq_ctx_key(user_id)
+        key = self._groq_ctx_key(subject)
         async with self.redis.client() as client:
             raw = await client.lrange(key, 0, -1)
         out: list[dict] = []
@@ -256,25 +263,25 @@ class RedisStorage:
 
     # ── Groq cooldown ─────────────────────────────────────────────────────────
 
-    def _groq_cd_key(self, user_id: int) -> str:
-        return f"{self.GROQ_CD_PREFIX}:{user_id}"
+    def _groq_cd_key(self, subject: int | str) -> str:
+        return f"{self.GROQ_CD_PREFIX}:{self._groq_subject(subject)}"
 
-    async def groq_cooldown_ok(self, user_id: int) -> bool:
+    async def groq_cooldown_ok(self, subject: int | str) -> bool:
         """
         True — ИИ может ответить (cooldown истёк или не задан).
         False — ещё рано, пользователь получил ответ ИИ недавно.
         """
         if self._groq_cooldown <= 0:
             return True
-        key = self._groq_cd_key(user_id)
+        key = self._groq_cd_key(subject)
         async with self.redis.client() as client:
             return not bool(await client.get(key))
 
-    async def groq_cooldown_set(self, user_id: int) -> None:
+    async def groq_cooldown_set(self, subject: int | str) -> None:
         """Ставим cooldown-ключ после ответа ИИ."""
         if self._groq_cooldown <= 0:
             return
-        key = self._groq_cd_key(user_id)
+        key = self._groq_cd_key(subject)
         async with self.redis.client() as client:
             await client.set(key, "1", ex=self._groq_cooldown)
 
@@ -360,7 +367,7 @@ class RedisStorage:
         body = (text or "").strip()
         if not body:
             raise ValueError("empty message")
-        if role not in ("user", "staff"):
+        if role not in ("user", "staff", "ai"):
             role = "user"
         msg = WebChatMessage(
             id=uuid.uuid4().hex,

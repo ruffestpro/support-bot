@@ -104,7 +104,8 @@ def _create_web_server(
         web_app,
         host=config.web.HOST,
         port=config.web.PORT,
-        log_level="info",
+        log_level="warning",
+        access_log=False,
         loop="asyncio",
     )
     server = UvicornServer(uvicorn_config)

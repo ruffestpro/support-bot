@@ -17,6 +17,7 @@ from app.bot.utils.exceptions import (
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import WebSessionData
 from app.web.auth import CabinetIdentity, verify_cabinet_request
+from app.web.groq import maybe_groq_web_reply
 from app.web.schemas import (
     ChatMessageOut,
     MessagesListResponse,
@@ -164,6 +165,15 @@ def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> Fas
             ) from ex
 
         user_msg = await redis_storage.web_append_message(identity.id, "user", text)
+        session = await redis_storage.get_web_session(identity.id) or session
+        await maybe_groq_web_reply(
+            bot=bot,
+            config=config,
+            redis=redis_storage,
+            identity_id=identity.id,
+            session=session,
+            user_text=text,
+        )
         return PostMessageResponse(message=ChatMessageOut(**user_msg.to_dict()))
 
     return app

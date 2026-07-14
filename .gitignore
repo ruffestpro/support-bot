@@ -166,5 +166,8 @@ openmemory.md
 .cursorindexingignore
 .vscode/
 
+# Локальный override (не в git); на проде не нужен
+docker-compose.yml
+
 # Вложения веб-чата поддержки
 data/web_chat_images/

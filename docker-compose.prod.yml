@@ -1,11 +1,41 @@
-# Прод: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-# Не правьте docker-compose.yml на сервере — только этот overlay + .env
+# Прод (единственный compose в репо для сервера):
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Web API: контейнер :8080 → хост 127.0.0.1:8081 (nginx: proxy_pass http://127.0.0.1:8081/)
 
 services:
+
   bot:
     build:
+      context: .
+      network: host
       args:
         PIP_INDEX_URL: https://pypi.org/simple
-    # Compose merge дописывает ports — !reset убирает 8080:8080 из base
-    ports: !reset
+    env_file:
+      - .env
+    container_name: support-bot
+    command: sh -c "cd /usr/src/app && python -m app"
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      - .:/usr/src/app
+      - ./data/web_chat_images:/usr/src/app/data/web_chat_images
+    ports:
       - "127.0.0.1:8081:8080"
+    networks:
+      - network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:7-alpine
+    container_name: support-redis
+    restart: always
+    volumes:
+      - ./redis/data/:/data
+    networks:
+      - network
+
+networks:
+  network:

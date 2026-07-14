@@ -1,13 +1,13 @@
+# Локальная разработка (не для прода):
+#   docker compose -f docker-compose.dev.yml up --build -d
+
 services:
 
   bot:
     build:
       context: .
-      # На Linux: сборка в сети хоста часто убирает таймауты NAT/DNS до PyPI
       network: host
       args:
-        # Зеркало отдаёт whl со своего CDN — меньше обрывов до files.pythonhosted.org (РФ/Азия)
-        # Вернуть официальный индекс: https://pypi.org/simple
         PIP_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
     env_file:
       - .env
@@ -18,10 +18,9 @@ services:
       - redis
     volumes:
       - .:/usr/src/app
-      # Вложения из веб-ЛК (фото в чат поддержки); переживает пересборку образа
       - ./data/web_chat_images:/usr/src/app/data/web_chat_images
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"
     networks:
       - network
     extra_hosts:
@@ -35,7 +34,6 @@ services:
       - ./redis/data/:/data
     networks:
       - network
-
 
 networks:
   network:

@@ -44,27 +44,35 @@ Telegram-бот для **тикетов поддержки** через **топ
 
 ## Установка (Docker)
 
+**Прод:**
+
 ```bash
 git clone https://github.com/ruffestpro/support-bot.git
 cd support-bot
 cp .env.example .env
-nano .env   # или ваш редактор
-docker compose up --build -d
+nano .env
+mkdir -p data/web_chat_images
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+**Локальная разработка** (зеркало PyPI для быстрой сборки):
+
+```bash
+docker compose -f docker-compose.dev.yml up --build -d
 ```
 
 - `docker compose` подхватывает `.env` для сервиса **bot** (`env_file` в compose).  
-- Данные Redis: bind mount `./redis/data` (см. `docker-compose.yml`).  
-- Если PyPI медленный из вашей сети, в compose задано **зеркало** для сборки образа; при необходимости переопределите `PIP_INDEX_URL`.
+- Данные Redis: bind mount `./redis/data`.  
+- Проброс Web API: `127.0.0.1:8081→8080` (внутри контейнера `WEB_API_PORT=8080`).  
+- Файл `docker-compose.yml` **не в репо** — при `git pull` на сервере ничего не перезапишется; используйте только `docker-compose.prod.yml`.
 
-**Прод** (не правьте `docker-compose.yml` на сервере — используйте overlay):
+**Обновление на проде:**
 
 ```bash
 git pull
-mkdir -p data/web_chat_images
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate
+curl -s http://127.0.0.1:8081/health
 ```
-
-`docker-compose.prod.yml`: PyPI official, `ports: !reset` → только `127.0.0.1:8081→8080` (без конфликта с `8080:8080` из base).
 
 ## Web API чата (личный кабинет)
 
@@ -76,7 +84,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 | `POST /support/messages` | Текст JSON `{"text":"..."}` или multipart `image` + опционально `text` |
 | `GET /support/messages/{id}/image` | Вложение из веб-чата |
 
-В nginx ЛК: `location /support-api/` → `proxy_pass http://127.0.0.1:8081/;` (прод) или `:8080/` (dev).  
+В nginx ЛК: `location /support-api/` → `proxy_pass http://127.0.0.1:8081/`;
 Для загрузки фото: `client_max_body_size 10m;` в этом location.
 
 Для **локальной разработки** `CABINET_API_URL` должен указывать на тот же API, куда ходит фронт ЛК (тот же origin/прокси, что и cookie сессии).

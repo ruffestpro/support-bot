@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 COPY requirements.txt .
 
-# Индекс: в compose по умолчанию зеркало (см. docker-compose), иначе часто таймауты до files.pythonhosted.org
+# Индекс: в compose (docker-compose.dev.yml / docker-compose.prod.yml), иначе часто таймауты до files.pythonhosted.org
 ARG PIP_INDEX_URL=https://pypi.org/simple
 # setuptools нужен для pkg_resources в APScheduler 3.10; отдельный pip + проверка — гарантия в slim-образе
 RUN pip install --no-cache-dir --retries 25 --timeout 600 \

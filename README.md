@@ -56,6 +56,16 @@ docker compose up --build -d
 - Данные Redis: bind mount `./redis/data` (см. `docker-compose.yml`).  
 - Если PyPI медленный из вашей сети, в compose задано **зеркало** для сборки образа; при необходимости переопределите `PIP_INDEX_URL`.
 
+**Прод** (не правьте `docker-compose.yml` на сервере — используйте overlay):
+
+```bash
+git pull
+mkdir -p data/web_chat_images
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+`docker-compose.prod.yml`: PyPI official, порт `127.0.0.1:8081→8080`, volume для фото из ЛК.
+
 ## Web API чата (личный кабинет)
 
 Опциональный HTTP API для чата поддержки из веб-ЛК без VPN. Авторизация — проксирование cookie/Bearer в существующий `GET /api/auth/me` SoloBot (код бэкенда не меняется).
@@ -63,10 +73,11 @@ docker compose up --build -d
 | Endpoint | Описание |
 |----------|----------|
 | `GET /support/messages?since=` | Список сообщений (polling) |
-| `POST /support/messages` `{"text":"..."}` | Отправить сообщение в forum topic |
+| `POST /support/messages` | Текст JSON `{"text":"..."}` или multipart `image` + опционально `text` |
+| `GET /support/messages/{id}/image` | Вложение из веб-чата |
 
-В nginx ЛК: `location /support-api/` → `proxy_pass http://127.0.0.1:8080/;`  
-Переменные: `WEB_API_*`, `WEB_CORS_ORIGINS`, `CABINET_API_URL`.
+В nginx ЛК: `location /support-api/` → `proxy_pass http://127.0.0.1:8081/;` (прод) или `:8080/` (dev).  
+Для загрузки фото: `client_max_body_size 10m;` в этом location.
 
 Для **локальной разработки** `CABINET_API_URL` должен указывать на тот же API, куда ходит фронт ЛК (тот же origin/прокси, что и cookie сессии).
 

@@ -1,0 +1,12 @@
+# Прод: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Не правьте docker-compose.yml на сервере — только этот overlay + .env
+
+services:
+  bot:
+    build:
+      args:
+        PIP_INDEX_URL: https://pypi.org/simple
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ./data/web_chat_images:/usr/src/app/data/web_chat_images

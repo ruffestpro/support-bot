@@ -6,7 +6,6 @@ services:
     build:
       args:
         PIP_INDEX_URL: https://pypi.org/simple
-    ports:
+    # Compose merge дописывает ports — !reset убирает 8080:8080 из base
+    ports: !reset
       - "127.0.0.1:8081:8080"
-    volumes:
-      - ./data/web_chat_images:/usr/src/app/data/web_chat_images

@@ -64,7 +64,7 @@ mkdir -p data/web_chat_images
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-`docker-compose.prod.yml`: PyPI official, порт `127.0.0.1:8081→8080`, volume для фото из ЛК.
+`docker-compose.prod.yml`: PyPI official, `ports: !reset` → только `127.0.0.1:8081→8080` (без конфликта с `8080:8080` из base).
 
 ## Web API чата (личный кабинет)
 

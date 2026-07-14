@@ -165,3 +165,6 @@ openmemory.md
 .specstory/
 .cursorindexingignore
 .vscode/
+
+# Вложения веб-чата поддержки
+data/web_chat_images/

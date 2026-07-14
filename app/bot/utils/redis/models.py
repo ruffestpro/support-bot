@@ -55,6 +55,7 @@ class WebChatMessage:
     role: str
     text: str
     created_at: str
+    image_url: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)

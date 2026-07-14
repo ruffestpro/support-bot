@@ -363,17 +363,21 @@ class RedisStorage:
         identity_id: str,
         role: str,
         text: str,
+        *,
+        image_url: str | None = None,
+        message_id: str | None = None,
     ) -> WebChatMessage:
         body = (text or "").strip()
-        if not body:
+        if not body and not image_url:
             raise ValueError("empty message")
         if role not in ("user", "staff", "ai"):
             role = "user"
         msg = WebChatMessage(
-            id=uuid.uuid4().hex,
+            id=message_id or uuid.uuid4().hex,
             role=role,
             text=body[:8000],
             created_at=self._now_iso(),
+            image_url=image_url,
         )
         payload = json.dumps(msg.to_dict(), ensure_ascii=False)
         key = self._web_msg_key(identity_id)
@@ -382,6 +386,17 @@ class RedisStorage:
             await client.ltrim(key, -self.WEB_MSG_MAX_ITEMS, -1)
             await client.expire(key, self.WEB_MSG_TTL_SEC)
         return msg
+
+    async def web_get_message(
+        self,
+        identity_id: str,
+        message_id: str,
+    ) -> WebChatMessage | None:
+        messages = await self.web_list_messages(identity_id)
+        for msg in messages:
+            if msg.id == message_id:
+                return msg
+        return None
 
     async def web_list_messages(
         self,

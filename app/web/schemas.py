@@ -10,6 +10,7 @@ class ChatMessageOut(BaseModel):
     role: str
     text: str
     created_at: str
+    image_url: str | None = None
 
 
 class MessagesListResponse(BaseModel):

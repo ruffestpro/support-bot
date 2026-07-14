@@ -4,7 +4,7 @@ from aiogram import Bot
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 
-from app.bot.utils.groq import groq_chat_completion, groq_reply_for_telegram_html
+from app.bot.utils.groq import groq_chat_completion, groq_reply_for_telegram_html, groq_vision_completion
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import WebSessionData
 from app.bot.utils.texts import TextMessage
@@ -65,3 +65,60 @@ async def maybe_groq_web_reply(
         )
     except TelegramBadRequest:
         logger.exception("Не удалось отправить ответ Groq в топик (web-ЛК)")
+
+
+async def maybe_groq_web_vision_reply(
+    *,
+    bot: Bot,
+    config: Config,
+    redis: RedisStorage,
+    identity_id: str,
+    session: WebSessionData,
+    user_text: str,
+    image_bytes: bytes,
+    image_mime: str = "image/jpeg",
+) -> None:
+    """Groq vision для веб-ЛК: фото + подпись → ответ в чат ЛК и зеркало в топик."""
+    if not config.groq.vision_enabled or not user_text.strip():
+        return
+    if await redis.groq_is_operator_engaged(identity_id):
+        return
+    if not await redis.groq_cooldown_ok(identity_id):
+        return
+
+    history = await redis.groq_get_history(identity_id)
+    ai_text = await groq_vision_completion(
+        config.groq,
+        caption=user_text.strip(),
+        image_bytes=image_bytes,
+        image_mime=image_mime,
+        history=history,
+    )
+    user_turn = f"[фото] {user_text.strip()}"
+    await redis.groq_append_turn(identity_id, "user", user_turn)
+    if not ai_text:
+        return
+
+    await redis.groq_cooldown_set(identity_id)
+    await redis.groq_append_turn(identity_id, "assistant", ai_text)
+    await redis.web_append_message(identity_id, "ai", ai_text)
+
+    thread_id = session.message_thread_id
+    if thread_id is None:
+        return
+
+    texts = TextMessage("ru")
+    header = texts.get("groq_staff_header")
+    plain = ai_text
+    if len(plain) > _GROQ_STAFF_BODY_MAX:
+        plain = plain[: _GROQ_STAFF_BODY_MAX - 1] + "…"
+    staff_text = f"{header}\n\n{groq_reply_for_telegram_html(plain)}"
+    try:
+        await bot.send_message(
+            chat_id=config.bot.GROUP_ID,
+            message_thread_id=thread_id,
+            text=staff_text,
+            parse_mode=ParseMode.HTML,
+        )
+    except TelegramBadRequest:
+        logger.exception("Не удалось отправить ответ Groq vision в топик (web-ЛК)")

@@ -1,6 +1,7 @@
 aiogram==3.7.0
 aiohttp>=3.9.0,<4.0
 fastapi>=0.115.0,<1.0
+python-multipart>=0.0.9,<1.0
 uvicorn[standard]>=0.32.0,<1.0
 # Должно совпадать с зависимостью aiogram-newsletter (apscheduler==3.10). Не ставить >=3.10.4 — ломает pip.
 APScheduler==3.10.0

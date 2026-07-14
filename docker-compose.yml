@@ -18,6 +18,8 @@ services:
       - redis
     volumes:
       - .:/usr/src/app
+      # Вложения из веб-ЛК (фото в чат поддержки); переживает пересборку образа
+      - ./data/web_chat_images:/usr/src/app/data/web_chat_images
     ports:
       - "8080:8080"
     networks:

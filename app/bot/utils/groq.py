@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from html import escape
 
 import aiohttp
@@ -14,18 +15,42 @@ logger = logging.getLogger(__name__)
 GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 # Сколько последних реплик (user+assistant) передавать в API
 GROQ_MAX_HISTORY_MESSAGES = 24
+GROQ_VISION_MAX_TOKENS = 1200
 
-
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a concise first-line support assistant for a Telegram help bot. "
-    "Reply in the same language as the user (Russian or English). "
-    "Give short, practical steps when possible. "
+_SUPPORT_POLICY = (
     "Messages in the conversation prefixed with [Поддержка (оператор)] are real replies from human staff "
     "in the support group; stay consistent with them and do not contradict them. "
     "If the question needs account access, payments, or policies you do not know, "
     "say that a human operator will review the ticket and the user should wait. "
     "Do not invent company policies, prices, or guarantees."
 )
+
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a concise first-line support assistant for a Telegram help bot. "
+    "Reply in the same language as the user (Russian or English). "
+    "Give short, practical steps when possible. "
+    f"{_SUPPORT_POLICY}"
+)
+
+DEFAULT_VISION_SYSTEM_PROMPT = (
+    "You are a concise first-line support assistant for a VPN service help bot. "
+    "The user sent a screenshot with a caption. Describe what is on the image and give practical help. "
+    "Reply ONLY in the same language as the user's caption — if the caption is in Russian, answer in Russian only; "
+    "if in English, English only. Never translate, never duplicate the answer in a second language. "
+    "Output the final answer only: no reasoning, no analysis steps, no thinking tags, no meta-commentary. "
+    f"{_SUPPORT_POLICY}"
+)
+
+_REASONING_BLOCK_RE = re.compile(
+    r"<(?:redacted_)?thinking>.*?</(?:redacted_)?thinking>\s*",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def strip_groq_reasoning(text: str) -> str:
+    """Убирает chain-of-thought Qwen/Groq из видимого ответа (fallback, если reasoning не отключён)."""
+    cleaned = _REASONING_BLOCK_RE.sub("", text).strip()
+    return cleaned or text.strip()
 
 
 async def groq_chat_completion(
@@ -102,7 +127,7 @@ async def groq_vision_completion(
     image_mime: str = "image/jpeg",
     *,
     history: list[dict] | None = None,
-    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    system_prompt: str = DEFAULT_VISION_SYSTEM_PROMPT,
     timeout: float = 60.0,
 ) -> str | None:
     """
@@ -128,8 +153,10 @@ async def groq_vision_completion(
     payload = {
         "model": groq.VISION_MODEL,
         "messages": messages,
-        "max_tokens": 700,
+        "max_tokens": GROQ_VISION_MAX_TOKENS,
         "temperature": 0.35,
+        # Qwen 3.6 на Groq по умолчанию пишет <think> на англ. и съедает лимит токенов
+        "reasoning_effort": "none",
     }
     headers = {
         "Authorization": f"Bearer {groq.API_KEY}",
@@ -166,7 +193,7 @@ async def groq_vision_completion(
     except (KeyError, IndexError, TypeError):
         return None
 
-    text = (content or "").strip()
+    text = strip_groq_reasoning((content or "").strip())
     return text or None
 
 

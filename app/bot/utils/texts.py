@@ -102,7 +102,7 @@ class TextMessage(Text):
                     "- {created_at}"
                 ),
                 "user_information_open_link": (
-                    "🔍 <a href=\"https://t.me/{bot_username}?start=user_{tg_id}\">Open in bot</a>"
+                    "🔍 <a href=\"https://t.me/{bot_username}?start=suser_{tg_id}\">Open in bot</a>"
                 ),
                 "message_not_sent": "<b>Message not sent!</b> An unexpected error occurred.",
                 "message_sent_to_user": "<b>Message sent to user!</b>",
@@ -166,7 +166,7 @@ class TextMessage(Text):
                     "- {created_at}"
                 ),
                 "user_information_open_link": (
-                    "🔍 <a href=\"https://t.me/{bot_username}?start=user_{tg_id}\">Открыть в боте</a>"
+                    "🔍 <a href=\"https://t.me/{bot_username}?start=suser_{tg_id}\">Открыть в боте</a>"
                 ),
                 "message_not_sent": "⚠️ <b>Передача прервана!</b> Возникла ошибка в канале связи.",
                 "message_sent_to_user": "✅ <b>Сообщение успешно доставлено союзнику!</b>",

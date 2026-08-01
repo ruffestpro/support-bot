@@ -40,7 +40,7 @@ Telegram-бот для **тикетов поддержки** через **топ
 5. Выберите **кастомный emoji** для новых топиков (опционально) → `BOT_EMOJI_ID` ([документация Telegram / примеры в .env.example](https://core.telegram.org/bots/api#forumtopic)).  
 6. (Опционально) Отредактируйте тексты в [`app/bot/utils/texts.py`](https://github.com/ruffestpro/support-bot/blob/main/app/bot/utils/texts.py).  
 7. (Опционально) **Groq**: ключ в [Groq Console](https://console.groq.com) → `GROQ_API_KEY`; настройте `GROQ_MODEL`, `GROQ_ENABLED`.  
-8. (Опционально) **`BOT_USERNAME`**: username **основного** бота без `@`. Используется в `/information` как `t.me/<user>?start=user_<telegram_id>` — основной бот должен обрабатывать `/start user_<id>`.
+8. (Опционально) **`BOT_USERNAME`**: username **основного** бота без `@`. Используется в `/information` как `t.me/<user>?start=suser_<telegram_id>` — основной бот обрабатывает `/start suser_<id>` (админский профиль).
 
 ## Установка (Docker)
 
@@ -112,7 +112,7 @@ curl -s http://127.0.0.1:8081/health
 
 Примечания:
 
-- **`BOT_USERNAME`**: формат ссылки `https://t.me/<BOT_USERNAME>?start=user_<tg_id>`. Парсинг нужно реализовать в **основном** боте.  
+- **`BOT_USERNAME`**: формат ссылки `https://t.me/<BOT_USERNAME>?start=suser_<tg_id>` (совпадает с Solo_bot ticket deep link).  
 - **Groq**: ответы первой линии в ЛС; операторы видят **зеркало** текста ИИ в топике; контекст может включать недавние сообщения **оператора** (Redis).  
 - **Не коммитьте** реальный `.env` — только `.env.example`.
 

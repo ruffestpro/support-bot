@@ -20,7 +20,7 @@ from app.bot.utils.exceptions import (
 )
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import WebSessionData
-from app.web.auth import CabinetIdentity, verify_cabinet_request
+from app.web.auth import CabinetIdentity, lookup_cabinet_suser_ref, verify_cabinet_request
 from app.web.groq import maybe_groq_web_reply, maybe_groq_web_vision_reply
 from app.web.images import (
     ALLOWED_IMAGE_MIME,
@@ -60,6 +60,10 @@ def _staff_topic_header(identity: CabinetIdentity) -> str:
 async def _get_or_init_session(
     redis: RedisStorage,
     identity: CabinetIdentity,
+    *,
+    request: Request | None = None,
+    config: Config | None = None,
+    force_profile_lookup: bool = False,
 ) -> WebSessionData:
     existing = await redis.get_web_session(identity.id)
     if existing:
@@ -68,6 +72,13 @@ async def _get_or_init_session(
         if identity.tg_id is not None and existing.tg_id != identity.tg_id:
             existing.tg_id = identity.tg_id
         existing.display_name = _display_name(identity)
+        await _maybe_fill_profile_ref(
+            existing,
+            identity,
+            request=request,
+            config=config,
+            force=force_profile_lookup,
+        )
         await redis.update_web_session(existing)
         return existing
 
@@ -81,8 +92,38 @@ async def _get_or_init_session(
         message_silent_mode=False,
         is_banned=False,
     )
+    await _maybe_fill_profile_ref(
+        session,
+        identity,
+        request=request,
+        config=config,
+        force=True,
+    )
     await redis.update_web_session(session)
     return session
+
+
+async def _maybe_fill_profile_ref(
+    session: WebSessionData,
+    identity: CabinetIdentity,
+    *,
+    request: Request | None,
+    config: Config | None,
+    force: bool,
+) -> None:
+    if identity.tg_id is not None and identity.tg_id > 0:
+        session.profile_ref = identity.tg_id
+        session.profile_lookup_done = True
+        return
+    if session.profile_ref is not None:
+        session.profile_lookup_done = True
+        return
+    if session.profile_lookup_done and not force:
+        return
+    if request is None or config is None:
+        return
+    session.profile_ref = await lookup_cabinet_suser_ref(request, config)
+    session.profile_lookup_done = True
 
 
 async def _ensure_not_spam(redis: RedisStorage, identity_id: str) -> None:
@@ -228,9 +269,16 @@ def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> Fas
 
     @app.get("/support/messages", response_model=MessagesListResponse)
     async def list_messages(
+        request: Request,
         identity: CabinetIdentity = Depends(cabinet_identity),
         since: str | None = Query(default=None, description="ISO timestamp; вернуть только новее"),
     ) -> MessagesListResponse:
+        await _get_or_init_session(
+            redis_storage,
+            identity,
+            request=request,
+            config=config,
+        )
         messages = await redis_storage.web_list_messages(identity.id, since=since)
         return MessagesListResponse(
             messages=[ChatMessageOut(**m.to_dict()) for m in messages],
@@ -260,7 +308,13 @@ def create_web_app(bot: Bot, config: Config, redis_storage: RedisStorage) -> Fas
         request: Request,
         identity: CabinetIdentity = Depends(cabinet_identity),
     ) -> PostMessageResponse:
-        session = await _get_or_init_session(redis_storage, identity)
+        session = await _get_or_init_session(
+            redis_storage,
+            identity,
+            request=request,
+            config=config,
+            force_profile_lookup=True,
+        )
         if session.is_banned:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Support access blocked")
 

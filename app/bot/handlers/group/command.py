@@ -10,6 +10,26 @@ from app.bot.manager import Manager
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import WebSessionData
 
+
+def _with_open_in_bot_link(manager: Manager, text: str, start_payload: int | str | None) -> str:
+    main_bot = manager.config.bot.BOT_USERNAME
+    if not main_bot or start_payload is None or start_payload == "":
+        return text
+    link = manager.text_message.get("user_information_open_link").format(
+        bot_username=main_bot,
+        tg_id=start_payload,
+    )
+    return f"{text}\n\n{link}"
+
+
+def _web_suser_payload(web_session: WebSessionData) -> int | None:
+    if web_session.tg_id is not None and web_session.tg_id > 0:
+        return web_session.tg_id
+    if web_session.profile_ref is not None and web_session.profile_ref > 0:
+        return web_session.profile_ref
+    return None
+
+
 router_id = Router()
 router_id.message.filter(
     F.chat.type.in_(["group", "supergroup"]),
@@ -102,14 +122,7 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
         format_data = user_data.to_dict()
         format_data["full_name"] = hbold(format_data["full_name"])
         text = manager.text_message.get("user_information").format_map(format_data)
-        main_bot = manager.config.bot.BOT_USERNAME
-        if main_bot:
-            link = manager.text_message.get("user_information_open_link").format(
-                bot_username=main_bot,
-                tg_id=user_data.id,
-            )
-            text = f"{text}\n\n{link}"
-        await message.reply(text)
+        await message.reply(_with_open_in_bot_link(manager, text, user_data.id))
         return
 
     assert isinstance(web_session, WebSessionData)
@@ -124,14 +137,7 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
         lines.append(f"Telegram ID: {hcode(str(web_session.tg_id))}")
     lines.append(f"Заблокирован: {hcode(str(web_session.is_banned))}")
     text = "\n".join(lines)
-    main_bot = manager.config.bot.BOT_USERNAME
-    if main_bot and web_session.tg_id is not None:
-        link = manager.text_message.get("user_information_open_link").format(
-            bot_username=main_bot,
-            tg_id=web_session.tg_id,
-        )
-        text = f"{text}\n\n{link}"
-    await message.reply(text)
+    await message.reply(_with_open_in_bot_link(manager, text, _web_suser_payload(web_session)))
 
 
 @router.message(Command(commands=["ban"]))

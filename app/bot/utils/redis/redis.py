@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from redis.asyncio import Redis
 
-from .models import UserData, WebSessionData, WebChatMessage
+from .models import UserData, WebSessionData, WebChatMessage, web_session_from_dict
 
 
 GROQ_OPERATOR_CONTENT_PREFIX = "[Поддержка (оператор)]"
@@ -301,7 +301,7 @@ class RedisStorage:
         data = await self._get(self.WEB_NAME, identity_id)
         if data is None:
             return None
-        return WebSessionData(**json.loads(data))
+        return web_session_from_dict(json.loads(data))
 
     async def update_web_session(self, data: WebSessionData) -> None:
         json_data = json.dumps(data.to_dict())

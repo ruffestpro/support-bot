@@ -1,4 +1,4 @@
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict, field, fields
 from datetime import datetime, timezone, timedelta
 
 
@@ -42,10 +42,17 @@ class WebSessionData:
     message_silent_id: int | None
     message_silent_mode: bool
     is_banned: bool = False
+    profile_ref: int | None = None
+    profile_lookup_done: bool = False
     created_at: str = field(default_factory=_default_created_at)
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def web_session_from_dict(payload: dict) -> WebSessionData:
+    allowed = {f.name for f in fields(WebSessionData)}
+    return WebSessionData(**{k: v for k, v in payload.items() if k in allowed})
 
 
 @dataclass

@@ -11,7 +11,6 @@ COPY requirements.txt .
 
 # Индекс: в compose (docker-compose.dev.yml / docker-compose.prod.yml), иначе часто таймауты до files.pythonhosted.org
 ARG PIP_INDEX_URL=https://pypi.org/simple
-# setuptools нужен для pkg_resources в APScheduler 3.10; отдельный pip + проверка — гарантия в slim-образе
 RUN pip install --no-cache-dir --retries 25 --timeout 600 \
     --trusted-host pypi.org \
     --trusted-host files.pythonhosted.org \
@@ -19,13 +18,12 @@ RUN pip install --no-cache-dir --retries 25 --timeout 600 \
     --trusted-host pypi.tuna.tsinghua.edu.cn \
     -i "${PIP_INDEX_URL}" \
     -r requirements.txt && \
-    pip install --no-cache-dir --force-reinstall --retries 10 --timeout 600 \
+    pip install --no-cache-dir --no-deps --retries 10 --timeout 600 \
     --trusted-host pypi.org \
     --trusted-host files.pythonhosted.org \
     --trusted-host mirrors.aliyun.com \
     --trusted-host pypi.tuna.tsinghua.edu.cn \
     -i "${PIP_INDEX_URL}" \
-    "setuptools>=69.0.0,<81.0.0" && \
-    python -c "import pkg_resources; print('pkg_resources: ok')"
+    "aiogram-newsletter==0.0.12"
 
 COPY . .

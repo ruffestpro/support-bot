@@ -1,6 +1,5 @@
-from typing import Dict, List, Optional, Type, Union, cast
+from typing import Dict, List, Optional, Type, Union
 
-from aiogram import Bot
 from aiogram.methods import SendMediaGroup
 from aiogram.types import (
     Audio,
@@ -56,14 +55,15 @@ class Album(TelegramObject):
 
         :return: A list of InputMedia objects.
         """
-        bot = cast(Bot, self.bot)
-        group = [
-            INPUT_TYPES[media_type](media=media.file_id, parse_mode=bot.default.parse_mode)
-            for media_type in self.media_types
-            for media in getattr(self, media_type)
-        ]
-        if group:
-            group[0].caption = self.caption
+        group: List[InputMedia] = []
+        first = True
+        for media_type in self.media_types:
+            for media in getattr(self, media_type):
+                kwargs: Dict[str, object] = {"media": media.file_id}
+                if first:
+                    kwargs["caption"] = self.caption
+                    first = False
+                group.append(INPUT_TYPES[media_type](**kwargs))
         return group
 
     def copy_to(

@@ -1,14 +1,6 @@
 import asyncio
 import contextlib
 import logging
-import warnings
-
-# APScheduler 3.10 тянет pkg_resources; setuptools выдаёт UserWarning при импорте — не мы.
-warnings.filterwarnings(
-    "ignore",
-    message=r"pkg_resources is deprecated as an API",
-    category=UserWarning,
-)
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
